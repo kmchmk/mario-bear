@@ -1,0 +1,9 @@
+# Personal source photos — never deploy these
+IMG_0391.JPG
+IMG_0470.JPG
+IMG_9934.heic
+IMG_9934.mov
+
+# Misc
+.DS_Store
+.git

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#5ac54f">
+<title>Puppy Kart 🐶🏁</title>
+<link rel="icon" href="assets/bear_head.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game"></canvas>
+
+  <!-- ===== Title screen ===== -->
+  <div id="title-screen" class="screen">
+    <div class="title-inner">
+      <h1 class="logo"><span class="l1">PUPPY</span><span class="l2">KART</span><span class="paw">🐾</span></h1>
+      <div class="title-media">
+        <video id="bear-video" src="assets/bear_video.mp4" poster="assets/bear_video_poster.jpg"
+               autoplay muted loop playsinline preload="auto"></video>
+        <img id="title-bear" src="assets/bear_front_small.png" alt="Bear the puppy">
+      </div>
+      <button id="btn-start" class="big-btn">▶&nbsp; START RACE</button>
+      <div class="title-hint">
+        <span class="desktop-hint">⬆️ Gas &nbsp;·&nbsp; ⬅️➡️ Steer &nbsp;·&nbsp; SHIFT Drift &nbsp;·&nbsp; SPACE Item</span>
+        <span class="mobile-hint">Use the on-screen pedals 🎮</span>
+      </div>
+      <div class="title-credits">Starring Bear the Puppy · 3 laps · 4 racers</div>
+    </div>
+  </div>
+
+  <!-- ===== Countdown overlay ===== -->
+  <div id="countdown" class="hidden"></div>
+
+  <!-- ===== HUD (drawn on canvas mostly, DOM for touch controls) ===== -->
+  <div id="touch-controls" class="hidden">
+    <div class="tc-left">
+      <button class="t-btn steer-btn" id="tc-left-btn" aria-label="steer left">◀</button>
+      <button class="t-btn steer-btn" id="tc-right-btn" aria-label="steer right">▶</button>
+    </div>
+    <div class="tc-right">
+      <button class="t-btn small" id="tc-item-btn" aria-label="use item">🎁</button>
+      <button class="t-btn small" id="tc-brake-btn" aria-label="brake">⛔</button>
+      <button class="t-btn drift" id="tc-drift-btn" aria-label="drift">DRIFT</button>
+      <button class="t-btn gas" id="tc-gas-btn" aria-label="gas">GAS</button>
+    </div>
+  </div>
+
+  <!-- ===== Pause ===== -->
+  <div id="pause-screen" class="screen hidden">
+    <div class="panel">
+      <h2>⏸ Paused</h2>
+      <button id="btn-resume" class="big-btn">Resume</button>
+      <button id="btn-restart" class="big-btn alt">↺ Restart Race</button>
+      <button id="btn-mute" class="big-btn alt">🔊 Sound: On</button>
+      <label class="check-row"><input type="checkbox" id="chk-autogas" checked> Auto-Gas (touch)</label>
+      <button id="btn-quit" class="big-btn danger">✖ Quit to Title</button>
+    </div>
+  </div>
+
+  <!-- ===== Results ===== -->
+  <div id="results-screen" class="screen hidden">
+    <div class="panel results-panel">
+      <h2 id="results-title">🏁 Finish!</h2>
+      <div id="results-list"></div>
+      <button id="btn-again" class="big-btn">↺ Race Again</button>
+      <button id="btn-title" class="big-btn alt">🏠 Title Screen</button>
+    </div>
+  </div>
+
+  <button id="btn-pause" class="corner-btn hidden" aria-label="pause">⏸</button>
+</div>
+
+<script src="js/track.js"></script>
+<script src="js/kart.js"></script>
+<script src="js/kart_ai.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/race.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
