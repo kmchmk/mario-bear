@@ -607,6 +607,19 @@ async function boot() {
       Game.race.player.respawn(); Game.race.msg('BACK ON TRACK', '#dbe0c6');
     }
   };
+  const gameCanvas = document.getElementById('game');
+  if (gameCanvas) {
+    gameCanvas.addEventListener('pointerdown', e => {
+      if (Game.state !== 'racing' || Game.paused) return;
+      const rect = gameCanvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      if (HUD.hitItemBox && HUD.hitItemBox(clickX, clickY)) {
+        e.preventDefault();
+        Input.itemQueue.push(1);
+      }
+    });
+  }
   const autoPause = () => {
     Input.reset();
     if (!Game.paused && !Game.resultsShown && ['racing', 'countdown', 'finished'].includes(Game.state)) togglePause();
