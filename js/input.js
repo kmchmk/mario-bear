@@ -6,7 +6,7 @@ const Input = {
   keys: Object.create(null),
   touch: { left: false, right: false, gas: false, brake: false, drift: false },
   autoGas: false,
-  isTouch: ('ontouchstart' in window) || navigator.maxTouchPoints > 0,
+  isTouch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches),
   itemQueue: [],
   onPause: null,
   onConfirm: null,
@@ -17,7 +17,7 @@ const Input = {
     /* restore prefs */
     this.autoGas = this.isTouch;
     try {
-      const saved = localStorage.getItem('pk_autogas');
+      const saved = localStorage.getItem('bk_autogas') ?? localStorage.getItem('pk_autogas');
       if (saved !== null) this.autoGas = saved === '1';
     } catch (e) { }
 
@@ -47,21 +47,36 @@ const Input = {
     window.addEventListener('keyup', e => { this.keys[e.code] = false; });
     window.addEventListener('blur', () => { this.reset(); });
 
+    window.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' && !this.isTouch) {
+        this.isTouch = true;
+        if (typeof Game !== 'undefined' && Game.racing && !Game.paused) {
+          document.getElementById('touch-controls')?.classList.remove('hidden');
+        }
+      }
+    }, { passive: true });
+
     this.bindTouch();
     const chk = document.getElementById('chk-autogas');
-    chk.checked = this.autoGas;
-    chk.addEventListener('change', () => {
-      this.autoGas = chk.checked;
-      try { localStorage.setItem('pk_autogas', chk.checked ? '1' : '0'); } catch (e) { }
-      document.getElementById('tc-gas-btn').style.display = chk.checked ? 'none' : '';
-    });
-    if (this.autoGas) {
-      document.getElementById('tc-gas-btn').style.display = 'none';
-      document.getElementById('tc-brake-btn').style.display = '';
-    } else {
-      document.getElementById('tc-gas-btn').style.display = '';
-      document.getElementById('tc-brake-btn').style.display = '';
+    const updateAutoGas = (enabled) => {
+      const gasBtn = document.getElementById('tc-gas-btn');
+      const tc = document.getElementById('touch-controls');
+      if (gasBtn) gasBtn.style.display = enabled ? 'none' : '';
+      tc?.classList.toggle('autogas-active', enabled);
+    };
+    if (chk) {
+      chk.checked = this.autoGas;
+      chk.addEventListener('change', () => {
+        this.autoGas = chk.checked;
+        try {
+          const val = chk.checked ? '1' : '0';
+          localStorage.setItem('bk_autogas', val);
+          localStorage.setItem('pk_autogas', val);
+        } catch (e) { }
+        updateAutoGas(chk.checked);
+      });
     }
+    updateAutoGas(this.autoGas);
   },
 
   bindTouch() {
@@ -70,7 +85,7 @@ const Input = {
       if (!el) return;
       const down = e => {
         e.preventDefault();
-        el.setPointerCapture(e.pointerId);
+        try { el.setPointerCapture(e.pointerId); } catch (_) { }
         el.classList.add('pressed');
         this.touch[prop] = true;
       };
@@ -90,7 +105,18 @@ const Input = {
     bind('tc-gas-btn', 'gas');
     bind('tc-brake-btn', 'brake');
     bind('tc-drift-btn', 'drift');
-    document.getElementById('tc-reset-btn').addEventListener('click', () => this.onRespawn?.());
+
+    const resetBtn = document.getElementById('tc-reset-btn');
+    if (resetBtn) {
+      const handleRespawn = e => {
+        e.preventDefault();
+        resetBtn.classList.add('pressed');
+        this.onRespawn?.();
+        setTimeout(() => resetBtn.classList.remove('pressed'), 200);
+      };
+      resetBtn.addEventListener('pointerdown', handleRespawn);
+      resetBtn.addEventListener('click', handleRespawn);
+    }
 
     const itemBtn = document.getElementById('tc-item-btn');
     if (itemBtn) {

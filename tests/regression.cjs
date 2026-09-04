@@ -47,7 +47,7 @@ for (const file of scripts) {
 }
 for (const m of html.matchAll(/(?:src|href)="((?:assets|css|js)\/[^"?#]+)"/g)) assert(fs.existsSync(path.join(root, m[1])), `Missing asset ${m[1]}`);
 const run = code => vm.runInContext(code, box);
-run(`Game.audio = { play() {}, stopMusic() {}, startMusic() {}, engine() {}, skid() {} }; TRACK.surfaceAt = () => TRACK.ROAD;`);
+run(`Game.audio = { play() {}, stopMusic() {}, startMusic() {}, engine() {}, skid() {}, init() {}, setMuted(m) { this.muted = m; }, muted: false }; TRACK.surfaceAt = () => TRACK.ROAD;`);
 run('var originalRenderFrame = renderFrame;');
 function test(name, fn) { fn(); console.log('PASS ' + name); }
 test('Restart clears pause, held inputs, and old results', () => {
@@ -149,5 +149,23 @@ test('Renderer executes at desktop, portrait, and landscape sizes', () => {
 test('Storage denial does not break touch input initialization', () => {
   run(`localStorage.getItem = () => { throw new Error('denied'); }; Input.isTouch = true; Input.init();`);
   assert.equal(run('Input.autoGas'), true);
+  box.localStorage.getItem = key => storage.get(key) ?? null;
+});
+test('Roulette fast-stops immediately on item input', () => {
+  run(`startRace(true); const p = Game.race.player; p.pendingItem = 'bone'; p.rouletteT = 1.0; Input.itemQueue.push(1); Game.race.update(0.016);`);
+  assert.equal(run('Game.race.player.rouletteT'), 0);
+});
+test('Resuming pause while finished does not restart racing music', () => {
+  run(`startRace(true); Game.state = 'finished'; Game.paused = true; var musicPlayed = false; Game.audio.startMusic = () => { musicPlayed = true; }; togglePause();`);
+  assert.equal(run('musicPlayed'), false);
+  assert.equal(run('Game.paused'), false);
+});
+test('Timing format ensures 2-digit minute padding for monospace alignment', () => {
+  assert.equal(run('HUD.fmtTime(5.23)'), '00:05.23');
+  assert.equal(run('HUD.fmtTime(65.23)'), '01:05.23');
+});
+test('Dual-key storage persists both Bear Kart (bk_) and legacy (pk_) preferences', () => {
+  run(`toggleMute();`);
+  assert.equal(run('localStorage.getItem("bk_mute")'), run('localStorage.getItem("pk_mute")'));
 });
 console.log('All logic and local asset checks passed. Browser rendering, audio, and play feel are not covered.');

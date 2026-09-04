@@ -68,6 +68,8 @@ function loadAssets() {
     for (const ch of CHARS) {
       Game.kartSprites.set(ch.id,
         ch.id === 'bear' && Game.bearRear ? Game.bearRear : Scenery.rivalKart(ch));
+      const head = ch.headCv || ch.imgEl;
+      try { ch.avatarUrl = head?.toDataURL ? head.toDataURL() : (head?.src || ch.head); } catch (_) { ch.avatarUrl = ''; }
     }
     Game.boxFrames = Sprites.makeBoxFrames();
     Game.bananaSprite = Sprites.makeBanana();
@@ -228,7 +230,7 @@ function drawKartSprite(g, kart, pr, time) {
   if (kart.invulnT > 0) g.globalAlpha *= .65;
   g.drawImage(img, -w / 2, -h, w, h);
   g.restore();
-  if (!kart.isPlayer && pr.depth < 650 && pr.depth > 60) {
+  if (!kart.isPlayer && pr.depth < 650 && pr.depth > 60 && (Game.state === 'racing' || Game.state === 'finished')) {
     const fs = Math.max(10 * Game.DW / window.innerWidth, pr.scale * 5);
     g.font = '600 ' + fs + 'px Arial'; g.textAlign = 'center';
     g.fillStyle = '#14241de0'; const tw = g.measureText(kart.name).width + 18;
@@ -255,24 +257,6 @@ class Particles {
       return p.life > 0;
     });
     if (this.list.length > 260) this.list.splice(0, this.list.length - 260);
-  }
-  draw(g, cam, time) {
-    const sorted = [];
-    for (const p of this.list) {
-      const pr = project(p.x, p.y, cam);
-      if (!pr || pr.depth > FOG_FAR * 1.2) continue;
-      sorted.push({ p, pr });
-    }
-    sorted.sort((a, b) => b.pr.depth - a.pr.depth);
-    for (const { p, pr } of sorted) {
-      const r = Math.max(1.5, pr.scale * p.size);
-      g.globalAlpha = Math.min(1, p.life / p.fade);
-      g.fillStyle = p.color;
-      g.beginPath();
-      g.arc(pr.x, pr.y - pr.scale * (p.z || 0), r, 0, 7);
-      g.fill();
-      g.globalAlpha = 1;
-    }
   }
 }
 /* ================= camera ================= */
@@ -343,12 +327,6 @@ function drawScene() {
   g.restore();
 }
 
-function drawPlayerKart(g, cam) {
-  const k = Game.race.player;
-  const pr = project(k.x, k.y, cam);
-  if (!pr) return;
-  drawKartSprite(g, k, pr, Game.time);
-}
 /* ================= game states ================= */
 function showEl(id, on) {
   document.getElementById(id).classList.toggle('hidden', !on);
@@ -373,6 +351,7 @@ function startRace(withPlayer) {
   Game.cam.y = k0.y - Math.sin(k0.angle) * CAM_BACK;
   Game.cam.a = k0.angle;
   Game.resultsShown = false;
+  Game.isNewRecord = false;
   Game.confetti = [];
 
   if (withPlayer) {
@@ -447,9 +426,7 @@ function buildResults() {
   let html = '<table>';
   for (const k of rows) {
     const ch = CHARS.find(c => c.id === k.charId);
-    const headCv = ch.headCv || ch.imgEl;
-    let url = '';
-    try { url = headCv.toDataURL ? headCv.toDataURL() : headCv.src; } catch (e) { }
+    const url = ch?.avatarUrl || (ch?.imgEl ? ch.imgEl.src : '');
     html += `<tr class="${k.isPlayer ? 'me' : ''}">
       <td class="pos">${k.rank}</td>
       <td style="width:44px">${url ? `<img src="${url}" width="36" height="36" style="border-radius:50%;object-fit:cover;background:#fff">` : ''}</td>
@@ -461,16 +438,19 @@ function buildResults() {
   const laps = race.player.lapTimes;
   if (laps.length) html += '<div class="results-sub">FASTEST LAP ' + HUD.fmtTime(Math.min(...laps)) + ' · ' + race.difficulty.toUpperCase() + '</div>';
   if (Game.bestTime != null) {
-    html += `<div id="results-sub">Best time: ${HUD.fmtTime(Game.bestTime)}</div>`;
+    const isNew = !!Game.isNewRecord;
+    const prefix = isNew ? '★ NEW ' : '';
+    html += `<div class="results-sub${isNew ? ' record-sub' : ''}">${prefix}${race.difficulty.toUpperCase()} RECORD · ${HUD.fmtTime(Game.bestTime)}</div>`;
   }
   list.innerHTML = html;
 }
 
 function saveBest() {
-  const t = Game.race.player.finishTime;
+  const t = Game.race?.player?.finishTime;
   if (t == null) return;
   if (Game.bestTime == null || t < Game.bestTime) {
     Game.bestTime = t;
+    Game.isNewRecord = true;
     try { localStorage.setItem('bk_best_' + Game.race.difficulty, String(t)); } catch (e) { }
   }
 }
@@ -552,6 +532,7 @@ function renderFrame() {
 
 function drawConfetti(g) {
   if (!Game.resultsShown || Game.reducedMotion || Game.paused) return;
+  if (Game.race?.player?.rank !== 1) return;
   if (Game.confetti.length < 90 && Math.random() < .3) {
     Game.confetti.push({
       x: Math.random() * Game.DW,
@@ -594,7 +575,8 @@ async function boot() {
   Input.init();
   Game.audio = new AudioSys();
   try {
-    Game.audio.muted = localStorage.getItem('pk_mute') === '1';
+    const muteVal = localStorage.getItem('bk_mute') ?? localStorage.getItem('pk_mute');
+    Game.audio.muted = muteVal === '1';
     const difficulty = localStorage.getItem('bk_difficulty');
     if (['cruise', 'sport', 'expert'].includes(difficulty)) Game.difficulty = difficulty;
   } catch (e) {}
@@ -625,6 +607,19 @@ async function boot() {
       Game.race.player.respawn(); Game.race.msg('BACK ON TRACK', '#dbe0c6');
     }
   };
+  const gameCanvas = document.getElementById('game');
+  if (gameCanvas) {
+    gameCanvas.addEventListener('pointerdown', e => {
+      if (Game.state !== 'racing' || Game.paused) return;
+      const rect = gameCanvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      if (HUD.hitItemBox && HUD.hitItemBox(clickX, clickY)) {
+        e.preventDefault();
+        Input.itemQueue.push(1);
+      }
+    });
+  }
   const autoPause = () => {
     Input.reset();
     if (!Game.paused && !Game.resultsShown && ['racing', 'countdown', 'finished'].includes(Game.state)) togglePause();
@@ -636,9 +631,15 @@ async function boot() {
     const panel = Game.paused ? 'pause-screen' : Game.resultsShown ? 'results-screen' : null;
     if (e.code !== 'Tab' || !panel) return;
     const nodes = [...document.getElementById(panel).querySelectorAll('button,input')];
+    if (!nodes.length) return;
     const first = nodes[0], last = nodes[nodes.length - 1];
-    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
-    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+    if (!nodes.includes(document.activeElement)) {
+      first.focus(); e.preventDefault();
+    } else if (e.shiftKey && document.activeElement === first) {
+      last.focus(); e.preventDefault();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      first.focus(); e.preventDefault();
+    }
   });
   await loadAssets();
   const wd = TRACK.canvas.getContext('2d').getImageData(0, 0, TRACK.WORLD, TRACK.WORLD);
@@ -692,12 +693,16 @@ function togglePause() {
     document.getElementById('btn-resume').focus();
   } else {
     document.activeElement?.blur();
-    if (Game.state !== 'countdown') Game.audio.startMusic();
+    if (Game.state === 'racing') Game.audio.startMusic();
   }
 }
 function toggleMute() {
   Game.audio.init(); Game.audio.setMuted(!Game.audio.muted);
-  try { localStorage.setItem('pk_mute', Game.audio.muted ? '1' : '0'); } catch (e) {}
+  try {
+    const val = Game.audio.muted ? '1' : '0';
+    localStorage.setItem('bk_mute', val);
+    localStorage.setItem('pk_mute', val);
+  } catch (e) {}
   updateMuteLabel();
 }
 function updateMuteLabel() {

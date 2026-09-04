@@ -51,8 +51,9 @@ class Race {
       kart.finishTime = this.time;
       this.finishedOrder.push(kart);
       if (kart.isPlayer) {
-        this.audio.play('fanfare');
-        this.msg('GOAL!', '#ffd93d', 1.6);
+        this.audio.stopMusic();
+        this.audio.play(kart.rank === 4 ? 'lose' : 'fanfare');
+        this.msg(kart.rank === 1 ? 'GOAL! 1ST' : 'GOAL!', kart.rank === 1 ? '#ffd93d' : '#f4f1e8', 1.6);
         Game.onPlayerFinish();
       } else {
         kart.speedMul *= .8;          // victory-lap cruise
@@ -177,6 +178,10 @@ Race.prototype.update = function (dt) {
   }
   this._driftPrev = Input.driftHeld;
   while (Input.consumeItemPress()) {
+    if (p.pendingItem && p.rouletteT > 0) {
+      p.rouletteT = 0;
+      break;
+    }
     if (p.item && p.rouletteT <= 0) { p.useItem(this); break; }
   }
 
