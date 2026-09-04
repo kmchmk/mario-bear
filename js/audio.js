@@ -21,7 +21,7 @@ class AudioSys {
     this.master.connect(this.ctx.destination);
 
     this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.15;
+    this.musicGain.gain.value = 0.12;
     this.musicGain.connect(this.master);
 
     this.sfxGain = this.ctx.createGain();
@@ -202,7 +202,7 @@ class AudioSys {
 
   schedule() {
     if (!this.musicOn || !this.ok) return;
-    const SPB = 60 / 138 / 4;               // 16th note duration
+    const SPB = 60 / 118 / 4;               // restrained driving groove
     while (this.nextStepT < this.ctx.currentTime + 0.16) {
       this.playStep(this.step, this.nextStepT, SPB);
       this.nextStepT += SPB;
@@ -217,7 +217,7 @@ class AudioSys {
     /* lead */
     const lead = MUSIC_LEAD[s];
     if (lead) {
-      const o = c.createOscillator(); o.type = 'square';
+      const o = c.createOscillator(); o.type = 'triangle';
       o.frequency.value = 440 * Math.pow(2, (lead - 69) / 12);
       const g = c.createGain();
       g.gain.setValueAtTime(0.055, t);

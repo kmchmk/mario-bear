@@ -1,262 +1,100 @@
 'use strict';
-/* ============================================================
-   hud.js — laps, timer, position badge, minimap, item slot,
-   messages, wrong-way & boost effects (all canvas-drawn)
-   ============================================================ */
 const HUD = (() => {
-
-  const ORD = ['st', 'nd', 'rd', 'th'];
-  const RANK_COL = ['#ffd93d', '#e3e9f0', '#ffab73', '#b6c1cf'];
-
+  const C = { cream: '#f4f1e8', muted: '#b7c2af', orange: '#ed9155', panel: '#13241ddd' };
+  let icons = {};
   function fmtTime(t) {
-    if (t == null) return '--:--.--';
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t % 60);
-    const c = Math.floor((t * 100) % 100);
-    return m + ':' + String(s).padStart(2, '0') + '.' + String(c).padStart(2, '0');
+    if (!Number.isFinite(t) || t < 0) return '--:--.--';
+    return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') + '.' + String(Math.floor(t * 100) % 100).padStart(2, '0');
   }
-
-  let posPulse = 0, lastRank = 0;
-
-  /* ---------- minimap ---------- */
-  function drawMinimap(g, W, size, race) {
-    const pad = Math.max(10, size * 0.09);
-    const my0 = 72;                              // below the pause button
-    g.save();
-    g.globalAlpha = .92;
-    g.fillStyle = 'rgba(12,20,38,.62)';
-    rrPath(g, W - size - 14, my0, size, size, 16); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,.28)'; g.lineWidth = 2; g.stroke();
-
-    const b = TRACK.getBounds();
-    const bw = b.x1 - b.x0, bh = b.y1 - b.y0;
-    const sc = Math.min((size - pad * 2) / bw, (size - pad * 2) / bh);
-    const ox = W - size - 14 + pad + ((size - pad * 2) - bw * sc) / 2;
-    const oy = my0 + pad + ((size - pad * 2) - bh * sc) / 2;
-    const T = p => [ox + (p.x - b.x0) * sc, oy + (p.y - b.y0) * sc];
-
-    /* road */
-    g.beginPath();
-    TRACK.minimapPath.forEach((p, i) => {
-      const [x, y] = T(p);
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
-    });
-    g.closePath();
-    g.strokeStyle = '#f4f4f4'; g.lineWidth = Math.max(5, size * .055);
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
-    g.strokeStyle = '#8f97a8'; g.lineWidth = Math.max(2.4, size * .03); g.stroke();
-
-    /* start line notch */
-    {
-      const s0 = TRACK.samples[0];
-      const [x, y] = T(s0);
-      g.save(); g.translate(x, y); g.rotate(s0.a);
-      g.fillStyle = '#ffd93d';
-      g.fillRect(-2, -size * .04, 4, size * .08);
-      g.restore();
-    }
-    /* boosts */
-    g.fillStyle = '#ff9d2e';
-    for (const bp of TRACK.boosts) {
-      const [x, y] = T(bp);
-      g.beginPath(); g.arc(x, y, Math.max(2, size * .02), 0, 7); g.fill();
-    }
-    /* item boxes */
-    for (const box of race.itemBoxes) {
-      if (!box.active) continue;
-      const [x, y] = T(box);
-      g.fillStyle = '#7ec8ff';
-      g.fillRect(x - size * .014, y - size * .014, size * .028, size * .028);
-    }
-
-    /* karts */
-    for (const k of race.karts) {
-      const [x, y] = T(k);
-      if (k.isPlayer) {
-        g.fillStyle = k.color;
-        g.beginPath(); g.arc(x, y, size * .045, 0, 7); g.fill();
-        g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
-        g.strokeStyle = k.color; g.lineWidth = 2;
-        g.beginPath();
-        g.moveTo(x, y);
-        g.lineTo(x + Math.cos(k.angle) * size * .075,
-                 y + Math.sin(k.angle) * size * .075);
-        g.stroke();
-      } else {
-        g.fillStyle = k.color;
-        g.beginPath(); g.arc(x, y, size * .032, 0, 7); g.fill();
-        g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1.5; g.stroke();
-      }
-    }
-    g.restore();
+  function buildIcons() { icons = { bone: Sprites.boneIcon(80, 1), triple: Sprites.boneIcon(80, 3), banana: Sprites.bananaIcon(80) }; }
+  function panel(g, x, y, w, h) {
+    g.fillStyle = C.panel; g.beginPath(); g.roundRect(x, y, w, h, 9); g.fill();
+    g.strokeStyle = '#e5e9d51f'; g.lineWidth = 1; g.stroke();
   }
-
-  function rrPath(g, x, y, w, h, r) {
-    g.beginPath();
-    g.moveTo(x + r, y);
-    g.arcTo(x + w, y, x + w, y + h, r);
-    g.arcTo(x + w, y + h, x, y + h, r);
-    g.arcTo(x, y + h, x, y, r);
-    g.arcTo(x, y, x + w, y, r);
-    g.closePath();
+  function text(g, value, x, y, size = 12, color = C.cream, weight = 500, align = 'left') {
+    g.font = weight + ' ' + size + 'px Arial'; g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillStyle = color; g.fillText(value, x, y);
   }
-
-  /* ---------- main draw ---------- */
+  function map(g, race, x, y, size) {
+    panel(g, x, y, size, size + 27);
+    text(g, 'PINEWOOD', x + 13, y + 21, 8, C.muted, 600);
+    const b = TRACK.getBounds(), scale = Math.min((size - 30) / (b.x1 - b.x0), (size - 26) / (b.y1 - b.y0));
+    const ox = x + (size - (b.x1 - b.x0) * scale) / 2;
+    const oy = y + 27 + (size - (b.y1 - b.y0) * scale) / 2;
+    const X = p => ox + (p.x - b.x0) * scale, Y = p => oy + (p.y - b.y0) * scale;
+    g.beginPath(); TRACK.minimapPath.forEach((p, i) => i ? g.lineTo(X(p), Y(p)) : g.moveTo(X(p), Y(p)));
+    g.closePath(); g.strokeStyle = '#b2c0a477'; g.lineWidth = 5; g.lineJoin = 'round'; g.stroke();
+    const start = TRACK.samples[0]; g.fillStyle = C.orange; g.fillRect(X(start) - 3, Y(start) - 4, 6, 8);
+    for (const k of [...race.karts].sort((a,b) => Number(a.isPlayer) - Number(b.isPlayer))) {
+      g.fillStyle = k.isPlayer ? C.orange : k.color; g.beginPath(); g.arc(X(k), Y(k), k.isPlayer ? 4.5 : 3, 0, 7); g.fill();
+      g.strokeStyle = k.isPlayer ? '#fff' : '#18281d'; g.lineWidth = 1.3; g.stroke();
+    }
+  }
   function draw(g, W, H, race, time) {
-    const u = H / 720;                     // scale unit
-    const player = race.player;
-    if (!player) return;
-
-    /* ---- lap + timer pill ---- */
-    const lapNum = Math.min(Math.max(player.lap, 1), race.laps);
-    const lapTxt = 'LAP ' + lapNum + '/' + race.laps;
-    g.font = `900 ${28 * u | 0}px Trebuchet MS, sans-serif`;
-    const tw = g.measureText(lapTxt).width;
-    const px = 16 * u, py = 14 * u;
-    g.fillStyle = 'rgba(12,20,38,.55)';
-    rrPath(g, px, py, tw + 34 * u, 40 * u, 12 * u); g.fill();
-    g.fillStyle = player.lap >= race.laps ? '#ffd93d' : '#fff';
-    g.textAlign = 'left'; g.textBaseline = 'middle';
-    g.fillText(lapTxt, px + 17 * u, py + 21 * u);
-
-    g.font = `700 ${22 * u | 0}px "Courier New", monospace`;
-    g.fillStyle = '#fff';
-    g.fillText(fmtTime(race.time), px + 4 * u, py + 66 * u);
-
-    /* final lap flash */
-    if (lapNum === race.laps && !player.finished) {
-      const a = .5 + .5 * Math.sin(time * 6);
-      g.font = `900 ${20 * u | 0}px Trebuchet MS, sans-serif`;
-      g.fillStyle = `rgba(255,217,61,${a})`;
-      g.fillText('FINAL LAP!', px + 4 * u, py + 96 * u);
+    const scale = W / window.innerWidth;
+    const w = W / scale, h = H / scale, compact = w < 650, touch = Input.isTouch;
+    const p = race.player, pad = compact ? 15 : 24;
+    g.save(); g.scale(scale, scale);
+    // CSS-pixel coordinates keep the HUD consistent at every device pixel ratio.
+    panel(g, pad, pad, compact ? 93 : 108, 82);
+    text(g, 'POSITION', pad + 13, pad + 19, 8, C.muted, 600);
+    text(g, String(p.rank).padStart(2, '0'), pad + 12, pad + 64, 42, p.rank === 1 ? C.orange : C.cream, 750);
+    text(g, '/ 04', pad + (compact ? 60 : 68), pad + 63, 11, C.muted);
+    const lx = pad + (compact ? 106 : 123);
+    panel(g, lx, pad, compact ? 120 : 170, 82);
+    text(g, 'LAP ' + Math.max(1, Math.min(p.lap, race.laps)) + ' / ' + race.laps, lx + 13, pad + 22, 10, C.cream, 700);
+    g.fillStyle = '#f4f1e825'; g.fillRect(lx + 13, pad + 32, compact ? 94 : 144, 1);
+    text(g, fmtTime(p.finished ? p.finishTime : race.time), lx + 13, pad + 59, compact ? 18 : 24, C.cream, 500);
+    if (!compact) text(g, race.difficulty.toUpperCase() + '  /  GOOD BOY GRAND PRIX', lx + 190, pad + 25, 9, '#f4f1e8', 650);
+    // Inventory is always visible, including on touch devices.
+    const iy = pad + 97;
+    panel(g, pad, iy, compact ? 93 : 108, 92);
+    let item = p.rouletteT > 0 ? ['bone', 'banana', 'triple'][Math.floor(time * 12) % 3] : p.item;
+    if (item && icons[item]) g.drawImage(icons[item], pad + 25, iy + 5, 49, 49);
+    else text(g, '+', pad + (compact ? 46 : 54), iy + 43, 30, '#b7c2af66', 300, 'center');
+    const names = { bone: 'BONE BOOST', triple: 'BOOST × ' + p.itemCount, banana: 'BANANA' };
+    text(g, p.rouletteT > 0 ? 'PICKING…' : names[p.item] || 'FIND AN ITEM', pad + (compact ? 46 : 54), iy + 68, 8, item ? C.orange : C.muted, 600, 'center');
+    text(g, touch ? 'TAP ITEM TO USE' : '[ SPACE ]', pad + (compact ? 46 : 54), iy + 83, 7, C.muted, 500, 'center');
+    const mapSize = h < 480 ? 85 : compact ? 106 : 151;
+    map(g, race, w - mapSize - pad, pad + 64, mapSize);
+    // Compact speed readout moves above the touch pedals.
+    const sx = touch ? pad + (compact ? 106 : 123) : w - pad - (compact ? 120 : 161);
+    const sy = touch ? iy : h - 122;
+    panel(g, sx, sy, compact ? 120 : 161, 94);
+    text(g, String(Math.round(Math.abs(p.v) * .32)).padStart(3, '0'), sx + 13, sy + 53, compact ? 35 : 45, C.cream, 650);
+    text(g, 'KM/H', sx + (compact ? 85 : 120), sy + 53, 8, C.muted, 600);
+    g.fillStyle = '#a9ba952b'; g.fillRect(sx + 14, sy + 69, compact ? 92 : 132, 3);
+    g.fillStyle = p.boostT > 0 ? C.orange : '#b5c996';
+    g.fillRect(sx + 14, sy + 69, (compact ? 92 : 132) * Math.min(1, Math.abs(p.v) / (PHYS.MAX_SPEED * p.speedMul * 1.42)), 3);
+    text(g, p.boostT > 0 ? 'BOOST ACTIVE' : p.surface === TRACK.GRASS ? 'OFF ROAD' : 'BEAR / NO. 01', sx + 14, sy + 85, 7, p.boostT > 0 ? C.orange : C.muted, 600);
+    if (!touch && !compact) text(g, 'WASD / DRIVE     SHIFT / DRIFT     SPACE / ITEM     R / RECOVER', pad, h - 25, 9, C.muted, 500);
+    if (p.drifting) {
+      const x = w / 2 - 95, y = h - (touch ? 205 : 69);
+      panel(g, x, y, 190, 45);
+      const tier = p.driftCharge >= PHYS.MINI_T2 ? 2 : p.driftCharge >= PHYS.MINI_T1 ? 1 : 0;
+      const color = tier === 2 ? C.orange : tier === 1 ? '#74c9e0' : C.muted;
+      text(g, tier ? 'RELEASE FOR ' + (tier === 2 ? 'SUPER BOOST' : 'BOOST') : 'BUILDING DRIFT', w / 2, y + 18, 8, color, 700, 'center');
+      g.fillStyle = '#f4f1e82b'; g.fillRect(x + 13, y + 28, 164, 4);
+      g.fillStyle = color; g.fillRect(x + 13, y + 28, 164 * Math.min(1, p.driftCharge / PHYS.MINI_T2), 4);
     }
-
-    /* ---- minimap ---- */
-    const mmSize = Math.max(104, Math.min(H * .24, W * .26));
-    drawMinimap(g, W, mmSize, race);
-
-    /* ---- item slot (desktop) or next to item button (touch) ---- */
-    if (!Input.isTouch || W > 760) {
-      const S = 74 * u;
-      const ix = px, iy = py + 118 * u;
-      g.fillStyle = 'rgba(12,20,38,.5)';
-      rrPath(g, ix, iy, S, S, 14 * u); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2.5 * u; g.stroke();
-
-      let icon = null;
-      if (player.rouletteT > 0) {
-        icon = ICONS[(time * 14 | 0) % ICONS.length];
-      } else if (player.item === 'bone') icon = ICON_BONE;
-      else if (player.item === 'banana') icon = ICON_BANANA;
-      else if (player.item === 'triple') icon = ICON_TRIPLE;
-
-      if (icon) {
-        const m = 10 * u;
-        g.drawImage(icon, ix + m, iy + m, S - 2 * m, S - 2 * m);
-      } else {
-        g.font = `900 ${30 * u | 0}px Trebuchet MS`;
-        g.textAlign = 'center';
-        g.fillStyle = 'rgba(255,255,255,.25)';
-        g.fillText('?', ix + S / 2, iy + S / 2 + 2);
+    const m = [...race.msgs].reverse().find(m => time - m.t0 >= 0 && time - m.t0 < m.dur);
+    const warning = p.wrongWay ? 'WRONG WAY · TURN AROUND' : null;
+    const message = warning || (m && m.text);
+    if (message) {
+      const width = Math.min(w - 30, 360), y = h * .31;
+      g.globalAlpha = warning || Game.reducedMotion ? 1 : Math.min(1, (m.dur - (time - m.t0)) * 3);
+      panel(g, (w - width) / 2, y, width, 45);
+      text(g, message, w / 2, y + 29, compact ? 15 : 20, warning ? '#ffac7c' : C.cream, 700, 'center');
+    }
+    if (p.boostT > 0 && !Game.reducedMotion) {
+      g.globalAlpha = .22; g.strokeStyle = C.cream; g.lineWidth = 1.4;
+      for (let i = 0; i < 18; i++) {
+        const a = i / 18 * Math.PI * 2, phase = (time * 2 + i * .17) % 1;
+        const radius = Math.max(w, h) * (.35 + phase * .2);
+        g.beginPath(); g.moveTo(w / 2 + Math.cos(a) * radius, h * .45 + Math.sin(a) * radius);
+        g.lineTo(w / 2 + Math.cos(a) * (radius + 40), h * .45 + Math.sin(a) * (radius + 40)); g.stroke();
       }
     }
-
-    /* ---- position badge ---- */
-    const rank = Math.min(player.rank, 4);
-    if (rank !== lastRank) { posPulse = 1; lastRank = rank; }
-    posPulse = Math.max(0, posPulse - .06);
-
-    const fs = (86 + posPulse * 18) * u;
-    const num = String(rank), suf = ORD[rank - 1];
-    /* measure, then draw left-anchored so nothing clips */
-    g.font = `900 ${fs | 0}px Trebuchet MS, sans-serif`;
-    const nw = g.measureText(num).width;
-    g.font = `900 ${fs * .48 | 0}px Trebuchet MS, sans-serif`;
-    const sw = g.measureText(suf).width;
-    const totalW = nw + sw * .92;
-
-    const badgeBottom = Input.isTouch && W < 900
-      ? H - 224 * u
-      : H - 52 * u;
-    const bx = Math.max(totalW * 1.06, W - 26 * u) - totalW;
-    const by = badgeBottom;
-
-    g.save();
-    g.translate(bx, by);
-    g.transform(1, 0, -0.18, 1, 0, 0);       // italic slant
-    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-    g.lineWidth = 10 * u;
-    g.strokeStyle = '#141a26';
-    g.fillStyle = RANK_COL[rank - 1];
-    g.font = `900 ${fs | 0}px Trebuchet MS, sans-serif`;
-    g.strokeText(num, 0, 0); g.fillText(num, 0, 0);
-    g.font = `900 ${fs * .48 | 0}px Trebuchet MS, sans-serif`;
-    g.strokeText(suf, nw * 1.02, -fs * .05);
-    g.fillText(suf, nw * 1.02, -fs * .05);
     g.restore();
-
-    /* ---- wrong way ---- */
-    if (player.wrongWay && Math.sin(time * 9) > 0) {
-      g.font = `900 ${44 * u | 0}px Trebuchet MS, sans-serif`;
-      g.textAlign = 'center';
-      g.lineWidth = 8 * u; g.strokeStyle = '#5e0000';
-      g.fillStyle = '#ff5252';
-      g.strokeText('WRONG WAY!', W / 2, H * .3);
-      g.fillText('WRONG WAY!', W / 2, H * .3);
-    }
-
-    /* ---- center messages ---- */
-    for (const m of race.msgs) {
-      const t = (time - m.t0) / m.dur;
-      if (t < 0 || t > 1) continue;
-      const pop = t < .15 ? t / .15 : 1;
-      const fade = t > .75 ? 1 - (t - .75) / .25 : 1;
-      const sc = .6 + pop * .55;
-      g.save();
-      g.translate(W / 2, H * .3);
-      g.scale(sc, sc);
-      g.globalAlpha = fade;
-      const mfs = Math.min(64 * u, W * .085);
-      g.font = `900 ${mfs | 0}px Trebuchet MS, sans-serif`;
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.lineWidth = 10 * u; g.strokeStyle = 'rgba(20,26,38,.9)';
-      g.strokeText(m.text, 0, 0);
-      g.fillStyle = m.color;
-      g.fillText(m.text, 0, 0);
-      g.restore();
-    }
-
-    /* ---- boost speed lines ---- */
-    if (player.boostT > 0) {
-      g.save();
-      g.strokeStyle = 'rgba(255,255,255,.32)';
-      g.lineWidth = 3 * u;
-      const cx = W / 2, cy = H * .52;
-      for (let i = 0; i < 16; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const r0 = Math.min(W, H) * (.42 + Math.random() * .2);
-        const r1 = r0 + 60 * u + Math.random() * 70 * u;
-        g.beginPath();
-        g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
-        g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-        g.stroke();
-      }
-      g.restore();
-    }
   }
-
-  /* icons built lazily after Sprites ready */
-  let ICONS = [], ICON_BONE, ICON_BANANA, ICON_TRIPLE;
-  function buildIcons() {
-    ICON_BONE = Sprites.boneIcon(64, 1);
-    ICON_BANANA = Sprites.bananaIcon(64);
-    ICON_TRIPLE = Sprites.boneIcon(64, 3);
-    ICONS = [
-      Sprites.boneIcon(56, 1),
-      Sprites.bananaIcon(56),
-      Sprites.boneIcon(56, 3)
-    ];
-  }
-
   return { draw, fmtTime, buildIcons };
 })();

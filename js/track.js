@@ -5,7 +5,7 @@
 const TRACK = (() => {
 
   const WORLD = 2048;          // world size (square)
-  const ROAD_W = 112;          // road width in world units
+  const ROAD_W = 132;          // road width in world units
   const HALF = ROAD_W / 2;
 
   /* ---------- control points of the circuit (travel order) ----------
@@ -170,57 +170,6 @@ const TRACK = (() => {
     g.closePath();
   }
 
-  function drawTree(g, x, y, sc) {
-    g.save(); g.translate(x, y);
-    g.fillStyle = 'rgba(0,0,0,.18)';
-    g.beginPath(); g.ellipse(9 * sc, 11 * sc, 26 * sc, 13 * sc, 0, 0, 7); g.fill();
-    g.fillStyle = '#8d5a2b';
-    g.beginPath(); g.arc(0, 4 * sc, 6 * sc, 0, 7); g.fill();
-    g.fillStyle = '#2e7d32';
-    g.beginPath(); g.arc(0, 0, 24 * sc, 0, 7); g.fill();
-    g.fillStyle = '#388e3c';
-    g.beginPath(); g.arc(-5 * sc, -5 * sc, 17 * sc, 0, 7); g.fill();
-    g.fillStyle = '#4caf50';
-    g.beginPath(); g.arc(-10 * sc, -10 * sc, 9 * sc, 0, 7); g.fill();
-    g.restore();
-  }
-
-  function drawBoneDeco(g, x, y, ang) {
-    g.save(); g.translate(x, y); g.rotate(ang);
-    g.strokeStyle = '#f2ede4'; g.lineWidth = 9; g.lineCap = 'round';
-    g.beginPath(); g.moveTo(-15, 0); g.lineTo(15, 0); g.stroke();
-    g.fillStyle = '#f2ede4';
-    for (const ex of [-15, 15]) for (const ey of [-6, 6]) {
-      g.beginPath(); g.arc(ex, ey, 6.5, 0, 7); g.fill();
-    }
-    g.restore();
-  }
-
-  function drawPaw(g, x, y, ang, alpha) {
-    g.save(); g.translate(x, y); g.rotate(ang);
-    g.globalAlpha = alpha;
-    g.fillStyle = '#4e342e';
-    g.beginPath(); g.ellipse(0, 3, 6.5, 8, 0, 0, 7); g.fill();
-    for (let i = -1; i <= 1; i++) {
-      const a = -Math.PI / 2 + i * 0.62;
-      g.beginPath(); g.arc(Math.cos(a) * 10, Math.sin(a) * 10 + 1, 3.1, 0, 7); g.fill();
-    }
-    g.restore();
-  }
-
-  function drawHydrant(g, x, y) {
-    g.save(); g.translate(x, y);
-    g.fillStyle = 'rgba(0,0,0,.2)';
-    g.beginPath(); g.ellipse(4, 6, 14, 7, 0, 0, 7); g.fill();
-    g.fillStyle = '#d32f2f';
-    rr(g, -9, -12, 18, 24, 6); g.fill();
-    g.fillStyle = '#b71c1c';
-    rr(g, -13, -4, 26, 8, 4); g.fill();
-    g.fillStyle = '#ef5350';
-    g.beginPath(); g.arc(0, -12, 8, Math.PI, 0); g.fill();
-    g.restore();
-  }
-
   /* ---------- build the big world texture ---------- */
   const worldCv = document.createElement('canvas');
   worldCv.width = worldCv.height = WORLD;
@@ -229,7 +178,7 @@ const TRACK = (() => {
     const g = worldCv.getContext('2d');
 
     // grass base + stripes + speckles
-    g.fillStyle = '#57a83c'; g.fillRect(0, 0, WORLD, WORLD);
+    g.fillStyle = '#5f683f'; g.fillRect(0, 0, WORLD, WORLD);
     for (let y = 0; y < WORLD; y += 96) {
       g.fillStyle = 'rgba(255,255,255,.05)';
       g.fillRect(0, y, WORLD, 48);
@@ -248,10 +197,12 @@ const TRACK = (() => {
 
     g.lineJoin = 'round'; g.lineCap = 'round';
 
+    // Gravel shoulders separate asphalt from the forest floor.
+    g.lineWidth = ROAD_W + 54; g.strokeStyle = '#999478'; g.stroke(path);
     // curbs (red / white dashes peeking out both sides)
     g.setLineDash([30, 30]);
     g.lineWidth = ROAD_W + 34;
-    g.strokeStyle = '#e53935';
+    g.strokeStyle = '#b75638';
     g.stroke(path);
     g.lineDashOffset = -30;
     g.strokeStyle = '#f6f3ec';
@@ -261,12 +212,12 @@ const TRACK = (() => {
 
     // white edge lines
     g.lineWidth = ROAD_W + 10;
-    g.strokeStyle = '#eceff1';
+    g.strokeStyle = '#c9c5a7';
     g.stroke(path);
 
     // asphalt
     g.lineWidth = ROAD_W;
-    g.strokeStyle = '#585d65';
+    g.strokeStyle = '#535750';
     g.stroke(path);
 
     // subtle centre wear
@@ -307,51 +258,18 @@ const TRACK = (() => {
       g.restore();
     }
 
-    // paw prints stamped along road centre
-    for (let s = 60; s < LENGTH; s += 96) {
-      const p = poseAt(s);
-      const side = (Math.floor(s / 96) % 2 === 0 ? -1 : 1);
-      const nx = Math.cos(p.a + Math.PI / 2), ny = Math.sin(p.a + Math.PI / 2);
-      drawPaw(g, p.x + nx * side * 22, p.y + ny * side * 22, p.a, .22);
-    }
-
-    // trees
-    let placed = 0, tries = 0;
-    while (placed < 95 && tries < 5000) {
-      tries++;
-      const x = 50 + Math.random() * (WORLD - 100);
-      const y = 50 + Math.random() * (WORLD - 100);
-      const d = distToTrack(x, y);
-      if (d > 150 && d < 700) {
-        drawTree(g, x, y, .75 + Math.random() * .8);
-        placed++;
+    // Restrained markings and roadside texture, with upright trees rendered separately.
+    g.setLineDash([18, 30]); g.lineWidth = 1.5; g.strokeStyle = '#dcd7bb35'; g.stroke(path); g.setLineDash([]);
+    for (let i = 0; i < 1900; i++) {
+      const x = Math.random() * WORLD, y = Math.random() * WORLD;
+      if (distToTrack(x, y) > HALF + 32) {
+        g.fillStyle = i % 3 ? '#3e593b44' : '#bbaa6744';
+        g.fillRect(x, y, 2 + Math.random() * 7, 2 + Math.random() * 5);
       }
-    }
-    // bones & flowers on grass
-    placed = 0; tries = 0;
-    while (placed < 26 && tries < 3000) {
-      tries++;
-      const x = 40 + Math.random() * (WORLD - 80), y = 40 + Math.random() * (WORLD - 80);
-      if (distToTrack(x, y) > 135) { drawBoneDeco(g, x, y, Math.random() * Math.PI); placed++; }
-    }
-    const petalCols = ['#ffd93d', '#ff7043', '#7ec8ff', '#f48fb1', '#fff'];
-    for (let i = 0; i < 130; i++) {
-      const x = 40 + Math.random() * (WORLD - 80), y = 40 + Math.random() * (WORLD - 80);
-      if (distToTrack(x, y) > 120) {
-        g.fillStyle = petalCols[(Math.random() * petalCols.length) | 0];
-        g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
-      }
-    }
-    // hydrants near the grid
-    {
-      const hg = poseAt(LENGTH - 150);
-      const nx = Math.cos(hg.a + Math.PI / 2), ny = Math.sin(hg.a + Math.PI / 2);
-      drawHydrant(g, hg.x + nx * 105, hg.y + ny * 105);
-      drawHydrant(g, hg.x - nx * 105, hg.y - ny * 105);
     }
 
     // vignette-ish darkening outside world edge
-    g.fillStyle = '#2e6323';
+    g.fillStyle = '#435735';
     g.fillRect(0, 0, WORLD, 26); g.fillRect(0, WORLD - 26, WORLD, 26);
     g.fillRect(0, 0, 26, WORLD); g.fillRect(WORLD - 26, 0, 26, WORLD);
   }

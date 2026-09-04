@@ -1,87 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#5ac54f">
-<title>Puppy Kart 🐶🏁</title>
-<link rel="icon" href="assets/bear_head.png">
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#151c19">
+  <meta name="description" content="Small paws. Big energy. Race with Bear through Pinewood Circuit in a puppy-powered arcade kart racer.">
+  <title>Bear Kart — Small paws. Big energy.</title>
+  <link rel="icon" href="assets/bear_head.png">
+  <link rel="preload" as="image" href="assets/bear-kart-hero.png">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="game-wrap">
-  <canvas id="game"></canvas>
-
-  <!-- ===== Title screen ===== -->
+  <canvas id="game" aria-label="Bear Kart racing circuit"></canvas>
   <div id="title-screen" class="screen">
-    <div class="title-inner">
-      <h1 class="logo"><span class="l1">PUPPY</span><span class="l2">KART</span><span class="paw">🐾</span></h1>
-      <div class="title-media">
-        <video id="bear-video" src="assets/bear_video.mp4" poster="assets/bear_video_poster.jpg"
-               autoplay muted loop playsinline preload="auto"></video>
-        <img id="title-bear" src="assets/bear_front_small.png" alt="Bear the puppy">
-      </div>
-      <button id="btn-start" class="big-btn">▶&nbsp; START RACE</button>
-      <div class="title-hint">
-        <span class="desktop-hint">⬆️ Gas &nbsp;·&nbsp; ⬅️➡️ Steer &nbsp;·&nbsp; SHIFT Drift &nbsp;·&nbsp; SPACE Item</span>
-        <span class="mobile-hint">Use the on-screen pedals 🎮</span>
-      </div>
-      <div class="title-credits">Starring Bear the Puppy · 3 laps · 4 racers</div>
-    </div>
+    <div class="hero-art" aria-hidden="true"></div>
+    <header class="menu-header">
+      <a class="brand" href="./" aria-label="Bear Kart home"><span class="brand-mark">B<span>↗</span></span> BEAR KART<span class="brand-edition">RACING CLUB</span></a>
+      <nav aria-label="Game options"><button id="btn-guide" class="text-btn">How to play <span>↗</span></button><button id="btn-menu-mute" class="sound-btn" aria-label="Mute sound">Sound on</button></nav>
+    </header>
+    <main class="menu-content">
+      <div class="eyebrow"><span class="live-dot"></span> THE GOOD BOY GRAND PRIX</div>
+      <h1>SMALL PAWS.<br>BIG <em>ENERGY.</em></h1>
+      <p class="hero-copy">Four racers. Three laps. One very good boy.<br>Take the wheel with Bear. Leave a little dust.</p>
+      <div class="hero-tag"><span class="tag-line"></span> BUILT FOR THE ZOOMIES.</div>
+    </main>
+    <div class="driver-label" aria-hidden="true"><span>01</span><div>BEAR<small>YOUR DRIVER. YOUR BEST FRIEND.</small></div></div>
+    <section class="race-setup" aria-label="Race setup">
+      <div class="setup-card circuit-card"><canvas id="track-preview" width="240" height="150" aria-label="Pinewood Circuit layout"></canvas><div><span class="eyebrow">THE CIRCUIT / 01</span><h2>Pinewood</h2><p>Alpine forest <span>·</span> Golden hour</p><span class="track-facts">3 LAPS <i></i> 4 RACERS</span></div></div>
+      <button id="btn-bear" class="setup-card bear-card"><img src="assets/bear_head.png" alt="Bear, your puppy"><div><span class="eyebrow">MEET YOUR DRIVER</span><h2>Bear</h2><p>Born to chase. Ready to race.</p></div><span class="card-arrow">↗</span></button>
+      <div class="setup-card class-card"><span class="eyebrow">SET YOUR PACE</span><div class="class-options" role="group" aria-label="Race difficulty"><button data-difficulty="cruise" aria-pressed="false">Cruise</button><button data-difficulty="sport" aria-pressed="true">Sport</button><button data-difficulty="expert" aria-pressed="false">Expert</button></div><p id="difficulty-description">A little speed. A little competition.</p></div>
+    </section>
+    <footer class="menu-footer"><div class="footer-note"><span class="checkered"></span><span id="best-record">YOUR NEXT FAVORITE RACE.</span><small>Keyboard & touch ready</small></div><button id="btn-start" class="start-btn" disabled><span id="start-label">PREPARING THE GRID</span><span>↗</span></button></footer>
+    <div id="load-status" class="sr-only" role="status">Loading the circuit and drivers.</div>
   </div>
-
-  <!-- ===== Countdown overlay ===== -->
-  <div id="countdown" class="hidden"></div>
-
-  <!-- ===== HUD (drawn on canvas mostly, DOM for touch controls) ===== -->
+  <div id="countdown" class="hidden" role="status" aria-live="polite"></div>
   <div id="touch-controls" class="hidden">
-    <div class="tc-left">
-      <button class="t-btn steer-btn" id="tc-left-btn" aria-label="steer left">◀</button>
-      <button class="t-btn steer-btn" id="tc-right-btn" aria-label="steer right">▶</button>
-    </div>
-    <div class="tc-right">
-      <button class="t-btn small" id="tc-item-btn" aria-label="use item">🎁</button>
-      <button class="t-btn small" id="tc-brake-btn" aria-label="brake">⛔</button>
-      <button class="t-btn drift" id="tc-drift-btn" aria-label="drift">DRIFT</button>
-      <button class="t-btn gas" id="tc-gas-btn" aria-label="gas">GAS</button>
-    </div>
+    <button class="t-btn steer-btn" id="tc-left-btn" aria-label="Steer left">‹</button><button class="t-btn steer-btn" id="tc-right-btn" aria-label="Steer right">›</button>
+    <button class="t-btn" id="tc-item-btn" aria-label="Use item">ITEM</button><button class="t-btn" id="tc-brake-btn" aria-label="Brake">BRAKE</button><button class="t-btn" id="tc-drift-btn" aria-label="Drift">DRIFT</button><button class="t-btn" id="tc-gas-btn" aria-label="Accelerate">GAS</button><button class="t-btn" id="tc-reset-btn" aria-label="Return to track">↺</button>
   </div>
-
-  <!-- ===== Pause ===== -->
-  <div id="pause-screen" class="screen hidden">
-    <div class="panel">
-      <h2>⏸ Paused</h2>
-      <button id="btn-resume" class="big-btn">Resume</button>
-      <button id="btn-restart" class="big-btn alt">↺ Restart Race</button>
-      <button id="btn-mute" class="big-btn alt">🔊 Sound: On</button>
-      <label class="check-row"><input type="checkbox" id="chk-autogas" checked> Auto-Gas (touch)</label>
-      <button id="btn-quit" class="big-btn danger">✖ Quit to Title</button>
-    </div>
-  </div>
-
-  <!-- ===== Results ===== -->
-  <div id="results-screen" class="screen hidden">
-    <div class="panel results-panel">
-      <h2 id="results-title">🏁 Finish!</h2>
-      <div id="results-list"></div>
-      <button id="btn-again" class="big-btn">↺ Race Again</button>
-      <button id="btn-title" class="big-btn alt">🏠 Title Screen</button>
-    </div>
-  </div>
-
-  <button id="btn-pause" class="corner-btn hidden" aria-label="pause">⏸</button>
+  <div id="pause-screen" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="panel"><span class="eyebrow">TAKE A BREATHER</span><h2 id="pause-title">In the pits.</h2><p>The track will be right here.</p><button id="btn-resume" class="big-btn">Back to racing <span>↗</span></button><button id="btn-restart" class="big-btn alt">Restart race</button><button id="btn-mute" class="big-btn alt">Sound: On</button><label class="check-row"><input type="checkbox" id="chk-autogas"> Auto-accelerate</label><button id="btn-quit" class="text-btn">Return to garage</button></div></div>
+  <div id="results-screen" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="results-title"><div class="panel results-panel"><span class="eyebrow">PINEWOOD / RACE COMPLETE</span><h2 id="results-title">Nice run, Bear.</h2><div id="results-list"></div><button id="btn-again" class="big-btn">Race again <span>↗</span></button><button id="btn-title" class="text-btn">Return to garage</button></div></div>
+  <button id="btn-pause" class="corner-btn hidden" aria-label="Pause race">Ⅱ</button>
+  <dialog id="guide-dialog" class="info-dialog"><button class="dialog-close" aria-label="Close instructions">×</button><span class="eyebrow">A QUICK PIT BRIEFING</span><h2>Find your racing line.</h2><p>Beat three rivals over three laps. Stay on the asphalt, collect items, and turn a good drift into a great overtake.</p><div class="controls-grid"><div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate</span></div><div><kbd>A</kbd><kbd>D</kbd><span>Steer / ← →</span></div><div><kbd>S</kbd><kbd>↓</kbd><span>Brake & reverse</span></div><div><kbd>SHIFT</kbd><span>Hold + steer to drift</span></div><div><kbd>SPACE</kbd><span>Use your item</span></div><div><kbd>R</kbd><kbd>ESC</kbd><span>Recover / pause</span></div></div><div class="drift-tip"><span>THE SECRET SAUCE</span><p>Hold a drift until the meter turns blue or orange, then release for a mini-turbo. Orange means more boost.</p></div><p class="mobile-note">On a touchscreen, use the pedals. Auto-accelerate is on by default and can be changed in the pause menu.</p></dialog>
+  <dialog id="bear-dialog" class="info-dialog bear-dialog"><button class="dialog-close" aria-label="Close Bear profile">×</button><img src="assets/bear_front_small.png" alt="The real Bear with his fluffy brown coat and tall ears"><div><span class="eyebrow">THE REAL MVP / DRIVER 01</span><h2>Meet Bear.</h2><p>Big ears. Bright eyes. Main-character energy. This is the very good boy behind the wheel.</p><p>His signature ride: the orange No. 01, with a little extra room for those ears.</p><span class="profile-tag">100% GOOD BOY. 0% BRAKES.</span></div></dialog>
 </div>
-
-<script src="js/track.js"></script>
-<script src="js/kart.js"></script>
-<script src="js/kart_ai.js"></script>
-<script src="js/sprites.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/input.js"></script>
-<script src="js/race.js"></script>
-<script src="js/hud.js"></script>
-<script src="js/main.js"></script>
+<script src="js/track.js"></script><script src="js/kart.js"></script><script src="js/kart_ai.js"></script><script src="js/sprites.js"></script><script src="js/scenery.js"></script><script src="js/audio.js"></script><script src="js/input.js"></script><script src="js/race.js"></script><script src="js/hud.js"></script><script src="js/main.js"></script>
 </body>
 </html>

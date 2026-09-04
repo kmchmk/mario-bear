@@ -5,6 +5,8 @@
 class Race {
   constructor(withPlayer, audio) {
     this.audio = audio;
+    this.difficulty = Game.difficulty || 'sport';
+    const pace = { cruise: { player: .88, rival: .74 }, sport: { player: 1, rival: .94 }, expert: { player: 1.1, rival: 1.09 } }[this.difficulty];
     this.laps = 3;
     this.time = 0;
     this.frozen = true;
@@ -30,7 +32,7 @@ class Race {
         name: ch.name, color: ch.color, accent: ch.accent,
         headImg: ch.headCv || ch.imgEl, charId: ch.id,
         isPlayer: isP, slot: slots[ch.id],
-        speedMul: 1, skill: ch.skill
+        speedMul: (isP ? pace.player : pace.rival * ch.skill), skill: ch.skill
       }));
     }
     this.player = this.karts.find(k => k.isPlayer) || this.karts[0];
@@ -167,7 +169,7 @@ Race.prototype.update = function (dt) {
   if (Game.attract || p.finished) {
     aiAutopilot(p, this, dt);
   } else {
-    p.steerIn = Input.steer;
+    p.steerIn += (Input.steer - p.steerIn) * Math.min(1, dt * 12);
     p.gasIn = Input.gasHeld;
     p.brakeIn = Input.brakeHeld;
     p.driftHeld = Input.driftHeld;
@@ -179,8 +181,9 @@ Race.prototype.update = function (dt) {
   }
 
   /* AI think */
-  for (const k of this.karts) {
-    if (k.ai && !k.finished) k.aiThink(dt, this);
+    for (const k of this.karts) {
+      if (k.finished) aiAutopilot(k, this, dt);
+      else if (k.ai) k.aiThink(dt, this);
   }
 
   /* physics */
@@ -221,6 +224,7 @@ Race.prototype.updateItems = function (dt) {
       continue;
     }
     for (const k of this.karts) {
+      if (k.finished || k.item || k.pendingItem || k.rouletteT > 0) continue;
       const dx = k.x - box.x, dy = k.y - box.y;
       if (dx * dx + dy * dy < 38 * 38) {
         box.active = false;

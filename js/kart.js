@@ -64,7 +64,10 @@ class Kart {
 
     this.idx = TRACK.nearestIdx(this.x, this.y);
     this.progress = this.idx - TRACK.NS;
-    this.halfway = false;
+    this.nextCheckpoint = 0;
+    this.checkpoints = 0;
+    this.lapTimes = [];
+    this.lapStartTime = 0;
     this.lap = 0;
     this.finished = false;
     this.finishTime = 0;
@@ -118,13 +121,15 @@ class Kart {
   }
 
   respawn() {
-    const p = TRACK.poseAt((this.idx + 8) * TRACK.STEP);
+    const p = TRACK.poseAt(this.idx * TRACK.STEP);
     this.x = p.x; this.y = p.y; this.angle = p.a;
     this.v = 0;
     this.invulnT = 1.4;
     this.spinT = 0;
     this.slip = 0;
     this.drifting = false;
+    this.hopT = 0;
+    this.driftCharge = 0;
   }
 
   update(dt, race) {
@@ -176,9 +181,12 @@ class Kart {
     const tmax = this.maxSpeed;
     const av0 = Math.abs(this.v);
     if (gas && !brake) {
+      if (this.v < 0) this.v = Math.min(0, this.v + PHYS.BRAKE * dt);
+      else {
       const rate = this.boostT > 0 ? PHYS.BOOST_ACCEL : PHYS.ACCEL;
       if (av0 < tmax) this.v += (tmax - av0 + 30) * rate * dt;
       else this.v += (tmax - av0) * 2.4 * dt;
+      }
     } else if (brake) {
       if (this.v > 0) this.v -= PHYS.BRAKE * dt;
       else this.v = Math.max(PHYS.REVERSE_MAX, this.v - 300 * dt);
@@ -246,19 +254,23 @@ class Kart {
     if (Math.abs(d) <= 40) this.progress += d;
     this.idx = ni;
 
-    const progMod = ((this.progress % TRACK.NS) + TRACK.NS) % TRACK.NS;
-    if (progMod > TRACK.NS * 0.45 && progMod < TRACK.NS * 0.75) this.halfway = true;
-
-    const newLap = Math.floor(this.progress / TRACK.NS) + 1;
-    if (newLap > this.lap) {
-      if (this.halfway) {
-        this.lap = newLap;
-        this.halfway = false;
+    // Ordered quarter-lap gates: the grid crossing starts lap one immediately.
+    // Reversing across the line cannot count the same lap twice; grass shortcuts
+    // cannot satisfy gates while far from the road.
+    const center = TRACK.samples[ni];
+    const onCircuit = Math.hypot(this.x - center.x, this.y - center.y) < TRACK.HALF + 24;
+    const gate = this.nextCheckpoint % TRACK.NS;
+    const passedGate = ((ni - gate) % TRACK.NS + TRACK.NS) % TRACK.NS;
+    if (!this.finished && d > 0 && onCircuit && passedGate < Math.min(d + 1, 40)) {
+      this.checkpoints++;
+      this.nextCheckpoint += TRACK.NS / 4;
+      const nextLap = Math.floor((this.checkpoints - 1) / 4) + 1;
+      if (nextLap > this.lap) {
+        if (this.lap > 0) this.lapTimes.push(race.time - this.lapStartTime);
+        this.lapStartTime = race.time;
+        this.lap = nextLap;
         race.onLap(this);
       }
-      /* jumped without checkpoint: ignore */
-    } else if (newLap < this.lap) {
-      this.lap = newLap;   // reversed over the line
     }
 
     /* ---- wrong way (player) ---- */

@@ -15,14 +15,16 @@ const Input = {
 
   init() {
     /* restore prefs */
+    this.autoGas = this.isTouch;
     try {
-      this.autoGas = localStorage.getItem('pk_autogas') === '1';
+      const saved = localStorage.getItem('pk_autogas');
+      if (saved !== null) this.autoGas = saved === '1';
     } catch (e) { }
-    if (this.isTouch && localStorage.getItem('pk_autogas') === null) {
-      this.autoGas = true;                       // friendlier default on phones
-    }
 
     window.addEventListener('keydown', e => {
+      // Preserve native keyboard activation and dialog navigation.
+      if (document.querySelector('dialog[open]') || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+      if ((e.code === 'Enter' || e.code === 'Space') && /BUTTON|A/.test(e.target.tagName)) return;
       if (e.repeat) {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code))
           e.preventDefault();
@@ -35,7 +37,7 @@ const Input = {
           this.itemQueue.push(1);
           break;
         case 'Escape': case 'KeyP': if (this.onPause) this.onPause(); break;
-        case 'Enter': if (this.onConfirm) this.onConfirm(); break;
+        case 'Enter': e.preventDefault(); if (this.onConfirm) this.onConfirm(); break;
         case 'KeyM': if (this.onMuteToggle) this.onMuteToggle(); break;
         case 'KeyR': if (this.onRespawn) this.onRespawn(); break;
       }
@@ -43,7 +45,7 @@ const Input = {
         e.preventDefault();
     });
     window.addEventListener('keyup', e => { this.keys[e.code] = false; });
-    window.addEventListener('blur', () => { this.keys = Object.create(null); });
+    window.addEventListener('blur', () => { this.reset(); });
 
     this.bindTouch();
     const chk = document.getElementById('chk-autogas');
@@ -52,14 +54,13 @@ const Input = {
       this.autoGas = chk.checked;
       try { localStorage.setItem('pk_autogas', chk.checked ? '1' : '0'); } catch (e) { }
       document.getElementById('tc-gas-btn').style.display = chk.checked ? 'none' : '';
-      document.getElementById('tc-brake-btn').style.display = chk.checked ? '' : 'none';
     });
     if (this.autoGas) {
       document.getElementById('tc-gas-btn').style.display = 'none';
       document.getElementById('tc-brake-btn').style.display = '';
     } else {
       document.getElementById('tc-gas-btn').style.display = '';
-      document.getElementById('tc-brake-btn').style.display = 'none';
+      document.getElementById('tc-brake-btn').style.display = '';
     }
   },
 
@@ -69,6 +70,7 @@ const Input = {
       if (!el) return;
       const down = e => {
         e.preventDefault();
+        el.setPointerCapture(e.pointerId);
         el.classList.add('pressed');
         this.touch[prop] = true;
       };
@@ -80,7 +82,7 @@ const Input = {
       el.addEventListener('pointerdown', down);
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', up);
-      el.addEventListener('pointerleave', up);
+      el.addEventListener('lostpointercapture', up);
       el.addEventListener('contextmenu', e => e.preventDefault());
     };
     bind('tc-left-btn', 'left');
@@ -88,6 +90,7 @@ const Input = {
     bind('tc-gas-btn', 'gas');
     bind('tc-brake-btn', 'brake');
     bind('tc-drift-btn', 'drift');
+    document.getElementById('tc-reset-btn').addEventListener('click', () => this.onRespawn?.());
 
     const itemBtn = document.getElementById('tc-item-btn');
     if (itemBtn) {
@@ -107,6 +110,13 @@ const Input = {
   },
 
   consumeItemPress() { return this.itemQueue.length > 0 ? !!this.itemQueue.pop() : false; },
+
+  reset() {
+    this.keys = Object.create(null);
+    for (const key of Object.keys(this.touch)) this.touch[key] = false;
+    this.itemQueue.length = 0;
+    document.querySelectorAll('.t-btn.pressed').forEach(el => el.classList.remove('pressed'));
+  },
 
   get left() { return !!(this.keys.ArrowLeft || this.keys.KeyA || this.touch.left); },
   get right() { return !!(this.keys.ArrowRight || this.keys.KeyD || this.touch.right); },

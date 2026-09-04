@@ -80,6 +80,7 @@ Kart.prototype.aiThink = function (dt, race) {
       (Math.abs(diff) < 0.18 || !this.gasIn)) {
     this.releaseDrift(race);
   }
+  this.driftHeld = this.drifting;
 
   /* item usage */
   if (this.item && this.rouletteT <= 0) {

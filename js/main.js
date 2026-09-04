@@ -3,20 +3,23 @@
    main.js — boot, Mode-7 renderer, camera, race manager, states
    ============================================================ */
 
-const HORIZON_FRAC = 0.42;      // sky fraction of screen height
-const CAM_H = 46;               // camera height in world units
-const CAM_BACK = 108;           // camera distance behind kart
-const FOG_NEAR = 300, FOG_FAR = 900;
+const HORIZON_FRAC = 0.38;      // sky fraction of screen height
+const CAM_H = 42;               // camera height in world units
+const CAM_BACK = 132;           // camera distance behind kart
+const FOG_NEAR = 430, FOG_FAR = 1450;
 
 /* ---------- character roster ---------- */
 const CHARS = [
-  { id: 'bear', name: 'Bear', color: '#e53935', accent: '#ffd93d', head: 'assets/bear_head.png', player: true, skill: 1.0 },
+  { id: 'bear', name: 'Bear', color: '#d87940', accent: '#f1e6c8', head: 'assets/bear_head.png', player: true, skill: 1.0 },
   { id: 'cat', name: 'Whiskers', color: '#9aa0ad', accent: '#f8a5c2', head: 'CAT', skill: 0.985 },
   { id: 'bunny', name: 'Bounce', color: '#64b5f6', accent: '#ffffff', head: 'BUNNY', skill: 0.97 },
   { id: 'panda', name: 'Bamboo', color: '#ffffff', accent: '#2d3038', head: 'PANDA', skill: 0.95 }
 ];
 
 const Game = {
+  difficulty: 'sport',
+  paused: false,
+  reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   state: 'loading',            // loading | title | countdown | racing | finished | paused
   canvas: null,
   ctx: null,
@@ -51,14 +54,20 @@ function loadAssets() {
     if (ch.head === 'PANDA') { ch.headCv = Sprites.pandaHead(); return res(); }
     const img = new Image();
     img.onload = () => res();
-    img.onerror = () => res();          // keep going even if missing
+    img.onerror = () => { ch.imgEl = null; ch.headCv = Sprites.catHead(); res(); };          // keep going even if missing
     img.src = ch.head;
     ch.imgEl = img;
+  }));
+  jobs.push(new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => { Game.bearRear = img; resolve(); };
+    img.onerror = () => resolve();
+    img.src = 'assets/bear-kart-rear.png';
   }));
   return Promise.all(jobs).then(() => {
     for (const ch of CHARS) {
       Game.kartSprites.set(ch.id,
-        Sprites.makeKart(ch.headCv || ch.imgEl, ch.color, ch.accent));
+        ch.id === 'bear' && Game.bearRear ? Game.bearRear : Scenery.rivalKart(ch));
     }
     Game.boxFrames = Sprites.makeBoxFrames();
     Game.bananaSprite = Sprites.makeBanana();
@@ -81,8 +90,8 @@ function resize() {
   Game.focD = (Game.DH - Game.horY) * 1.15;
 
   /* internal ground buffer */
-  const targetW = Input.isTouch && Game.DW < Game.DH ? 330 : 430;
-  Game.IW = Math.max(240, Math.min(560, targetW));
+  const targetW = Input.isTouch && Game.DW < Game.DH ? 420 : 720;
+  Game.IW = Math.max(240, Math.min(960, targetW));
   Game.IH = Math.max(140, Math.round(Game.IW * (Game.DH - Game.horY) / Game.DW));
   Game.buf = document.createElement('canvas');
   Game.buf.width = Game.IW; Game.buf.height = Game.IH;
@@ -106,7 +115,7 @@ function renderGround(cam) {
     /* fog blend factor */
     let f = (z - FOG_NEAR) / (FOG_FAR - FOG_NEAR);
     f = f <= 0 ? 0 : f >= 1 ? 1 : f * f * (3 - 2 * f);
-    const fogR = 168, fogG = 216, fogB = 255;
+    const fogR = 191, fogG = 185, fogB = 153;
     const frI = ((fogR << 16) | (fogG << 8) | fogB);
     const inv = 1 - f;
 
@@ -122,7 +131,7 @@ function renderGround(cam) {
       if (mx >= 0 && my >= 0 && mx < TRACK.WORLD && my < TRACK.WORLD) {
         c = md[(my << 11) + mx];
       } else {
-        c = 0xff3ca85a;                          // grass green (ABGR)
+        c = 0xff3f685f;                          // grass green (ABGR)
       }
       if (f > 0) {
         /* blend with fog */
@@ -146,66 +155,26 @@ let skyCv = null, cloudCv = null, cloudW = 0;
 function buildSky() {
   const W = Game.DW, HY = Game.horY;
   skyCv = document.createElement('canvas');
-  skyCv.width = Math.max(2, W); skyCv.height = Math.max(2, HY);
+  skyCv.width = W; skyCv.height = HY;
   const g = skyCv.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 0, HY);
-  grd.addColorStop(0, '#5fb8f2');
-  grd.addColorStop(.65, '#a8dcff');
-  grd.addColorStop(1, '#e8f7ff');
-  g.fillStyle = grd; g.fillRect(0, 0, W, HY);
-
-  /* sun */
-  const sx = W * .78, sy = HY * .26;
-  const sg = g.createRadialGradient(sx, sy, 4, sx, sy, HY * .34);
-  sg.addColorStop(0, 'rgba(255,246,190,.95)');
-  sg.addColorStop(.25, 'rgba(255,238,150,.55)');
-  sg.addColorStop(1, 'rgba(255,238,150,0)');
-  g.fillStyle = sg;
-  g.beginPath(); g.arc(sx, sy, HY * .34, 0, 7); g.fill();
-  g.fillStyle = '#fff8cf';
-  g.beginPath(); g.arc(sx, sy, HY * .085, 0, 7); g.fill();
-
-  /* rotating backdrop: clouds + hills (drawn into a wide strip) */
-  cloudW = Math.max(W * 1.6, 900);
-  cloudCv = document.createElement('canvas');
-  cloudCv.width = cloudW; cloudCv.height = Math.max(2, HY);
+  const sky = g.createLinearGradient(0, 0, 0, HY);
+  sky.addColorStop(0, '#829ba0'); sky.addColorStop(.6, '#d2c9aa'); sky.addColorStop(1, '#e4c497');
+  g.fillStyle = sky; g.fillRect(0, 0, W, HY);
+  const glow = g.createRadialGradient(W * .73, HY * .38, 0, W * .73, HY * .38, HY * .9);
+  glow.addColorStop(0, '#fff1beee'); glow.addColorStop(.12, '#fff0b899'); glow.addColorStop(1, '#ffe6a800');
+  g.fillStyle = glow; g.fillRect(0, 0, W, HY);
+  cloudW = Math.ceil(Math.max(W * 2, 1400));
+  cloudCv = document.createElement('canvas'); cloudCv.width = cloudW; cloudCv.height = HY;
   const cg = cloudCv.getContext('2d');
-
-  /* hills along the bottom */
-  cg.fillStyle = '#79b563';
-  cg.beginPath();
-  cg.moveTo(0, HY);
-  for (let x = 0; x <= cloudW; x += 8) {
-    const t = x / cloudW * Math.PI * 2;
-    const y = HY - 18 -
-      Math.abs(Math.sin(t * 3) * 22 + Math.sin(t * 7) * 10);
-    cg.lineTo(x, y);
-  }
-  cg.lineTo(cloudW, HY); cg.closePath(); cg.fill();
-  cg.fillStyle = '#8cc774';
-  cg.beginPath();
-  cg.moveTo(0, HY);
-  for (let x = 0; x <= cloudW; x += 8) {
-    const t = x / cloudW * Math.PI * 2;
-    const y = HY - 10 - Math.abs(Math.sin(t * 5 + 2) * 12);
-    cg.lineTo(x, y);
-  }
-  cg.lineTo(cloudW, HY); cg.closePath(); cg.fill();
-
-  /* puffy clouds */
-  function puff(x, y, s) {
-    cg.fillStyle = 'rgba(255,255,255,.92)';
-    cg.beginPath();
-    cg.arc(x, y, 16 * s, 0, 7);
-    cg.arc(x + 15 * s, y - 9 * s, 19 * s, 0, 7);
-    cg.arc(x + 33 * s, y, 15 * s, 0, 7);
-    cg.arc(x + 16 * s, y + 7 * s, 17 * s, 0, 7);
-    cg.fill();
-  }
-  let seed = 7;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < 14; i++) {
-    puff(rnd() * cloudW, 12 + rnd() * (HY * .45), .7 + rnd() * .9);
+  for (let layer = 0; layer < 4; layer++) {
+    cg.fillStyle = ['#989d8d', '#858f7b', '#6b8066', '#4c6955'][layer];
+    cg.beginPath(); cg.moveTo(0, HY);
+    for (let x = 0; x <= cloudW; x += 5) {
+      const t = x / cloudW * Math.PI * 2;
+      const wave = Math.abs(Math.sin(t * 3 + layer) * .6 + Math.sin(t * 7 + 2) * .25 + Math.sin(t * 13) * .12);
+      cg.lineTo(x, HY - HY * (.08 + wave * (.55 - layer * .12)));
+    }
+    cg.lineTo(cloudW, HY); cg.closePath(); cg.fill();
   }
 }
 
@@ -244,37 +213,27 @@ function drawShadow(g, pr, w) {
 }
 
 function drawKartSprite(g, kart, pr, time) {
-  const img = Game.kartSprites.get(kart.charId) || [...Game.kartSprites.values()][0];
-  const w = pr.scale * 62;
-  drawShadow(g, pr, w);
-
+  const img = Game.kartSprites.get(kart.charId);
+  if (!img) return;
+  const w = pr.scale * (kart.isPlayer ? 59 : 55), h = w * img.height / img.width;
+  drawShadow(g, pr, w * .85);
   g.save();
-  g.translate(pr.x, pr.y - pr.scale * 2);
-  /* base sprite faces +x; rotate into view (rel 0 => nose points up-screen) */
-  const relA = kart.spinT > 0
-    ? (1.05 - kart.spinT) / 1.05 * Math.PI * 4
-    : kart.angle - Game.cam.a;
-  g.rotate(relA - Math.PI / 2);
-  if (kart.invulnT > 0 && (time * 14 | 0) % 2 === 0) g.globalAlpha = .35;
-  const bounce = Math.abs(Math.sin(time * 21)) * pr.scale *
-    (Math.abs(kart.v) > 30 ? 1.6 : 0);
-  g.translate(0, -bounce);
-  g.drawImage(img, -w / 2, -w * (img.height / img.width) / 2 - w * .06,
-    w, w * (img.height / img.width));
+  const hop = kart.hopT > 0 ? Math.sin(kart.hopT / PHYS.HOP_TIME * Math.PI) * 10 * pr.scale : 0;
+  const bounce = Game.reducedMotion ? 0 : Math.sin(time * 24) * Math.min(1, Math.abs(kart.v) / 200) * pr.scale * .35;
+  g.translate(pr.x, pr.y - hop - bounce);
+  // Lean around the tire contact point, never rotate a flat sprite into the road.
+  const lean = Game.reducedMotion ? 0 : (kart.drifting ? kart.driftDir * .075 : kart.steerIn * .025);
+  const spin = kart.spinT > 0 ? Math.cos(kart.spinT * 18) : 1;
+  g.rotate(lean); g.scale(spin, 1);
+  if (kart.invulnT > 0) g.globalAlpha *= .65;
+  g.drawImage(img, -w / 2, -h, w, h);
   g.restore();
-
-  /* drift sparks & boost flames drawn in world space already via particles */
-
-  /* name tag for rivals close by */
-  if (!kart.isPlayer && pr.depth < 420 && pr.depth > 60) {
-    g.font = `700 ${Math.max(11, pr.scale * 5.2) | 0}px Trebuchet MS`;
-    g.textAlign = 'center';
-    g.fillStyle = 'rgba(255,255,255,.85)';
-    g.strokeStyle = 'rgba(20,26,38,.75)';
-    g.lineWidth = 3;
-    const ty = pr.y - w * (img.height / img.width) - 8 * pr.scale * .12 - 6;
-    g.strokeText(kart.name, pr.x, ty);
-    g.fillText(kart.name, pr.x, ty);
+  if (!kart.isPlayer && pr.depth < 650 && pr.depth > 60) {
+    const fs = Math.max(10 * Game.DW / window.innerWidth, pr.scale * 5);
+    g.font = '600 ' + fs + 'px Arial'; g.textAlign = 'center';
+    g.fillStyle = '#14241de0'; const tw = g.measureText(kart.name).width + 18;
+    g.beginPath(); g.roundRect(pr.x - tw / 2, pr.y - h - fs * 2, tw, fs * 1.65, 4); g.fill();
+    g.fillStyle = '#f4f1e8'; g.fillText(kart.name, pr.x, pr.y - h - fs * .8);
   }
 }
 
@@ -333,100 +292,54 @@ function updateCamera(dt) {
 
 /* ================= scene ================= */
 function drawScene() {
-  const g = Game.ctx;
-  const race = Game.race;
-  const cam = Game.cam;
-
-  /* screen shake */
+  const g = Game.ctx, race = Game.race, cam = Game.cam;
   g.save();
-  if (Game.shake > 0.05) {
-    g.translate((Math.random() - .5) * Game.shake,
-                (Math.random() - .5) * Game.shake);
-    Game.shake *= 0.86;
+  if (!Game.reducedMotion && !Game.paused && Game.shake > .05) {
+    g.translate((Math.random() - .5) * Game.shake, (Math.random() - .5) * Game.shake);
+    Game.shake *= .86;
   }
-
   drawSky(cam.a);
-
   renderGround(cam);
-  g.imageSmoothingEnabled = false;
-  g.drawImage(Game.buf, 0, 0, Game.IW, Game.IH,
-    0, Game.horY, Game.DW, Game.DH - Game.horY);
-
-  /* ---- collect world sprites sorted by depth ---- */
+  g.imageSmoothingEnabled = true;
+  g.drawImage(Game.buf, 0, Game.horY, Game.DW, Game.DH - Game.horY);
   const items = [];
-  for (const box of race.itemBoxes) {
-    if (!box.active) continue;
-    const pr = project(box.x, box.y, cam);
-    if (pr && pr.depth < FOG_FAR) {
-      items.push({ d: pr.depth, type: 'box', pr, o: box });
-    }
-  }
-  for (const b of race.bananas) {
-    const pr = project(b.x, b.y, cam);
-    if (pr && pr.depth < FOG_FAR) items.push({ d: pr.depth, type: 'banana', pr, o: b });
-  }
-  for (const p of race.particles.list) {
-    const pr = project(p.x, p.y, cam);
-    if (pr && pr.depth < FOG_FAR) {
-      items.push({ d: pr.depth + 0.5, type: 'part', pr, o: p });
-    }
-  }
-
-  /* fog fade helper */
-  function fogA(depth) {
-    return 1 - Math.min(1, Math.max(0,
-      (depth - FOG_NEAR) / (FOG_FAR - FOG_NEAR))) * .85;
-  }
-
+  const add = (o, type, range = FOG_FAR) => {
+    const pr = project(o.x, o.y, cam);
+    if (pr && pr.depth < range) items.push({ o, type, pr, d: pr.depth });
+  };
+  for (const tree of Scenery.objects) add(tree, 'scenery');
+  for (const k of race.karts) add(k, 'kart');
+  for (const box of race.itemBoxes) if (box.active) add(box, 'box');
+  for (const b of race.bananas) add(b, 'banana');
+  for (const p of race.particles.list) add(p, 'part');
+  // All world objects share one depth order; rivals can no longer cover Bear from behind.
   items.sort((a, b) => b.d - a.d);
-  let kartDrawn = false;
   for (const it of items) {
-    if (!kartDrawn && it.d < CAM_BACK - 4) {
-      /* player kart sits between sprites by depth */
-      drawPlayerKart(g, cam);
-      kartDrawn = true;
-    }
-    const a = fogA(it.d);
-    g.globalAlpha = a;
-    if (it.type === 'box') {
-      const f = Game.boxFrames[(Game.time * 10 + it.o.phase * 5 | 0) % Game.boxFrames.length];
-      const bob = Math.sin(Game.time * 3 + it.o.phase) * it.pr.scale * 3;
-      const s = it.pr.scale * 34;
-      g.drawImage(f, it.pr.x - s / 2, it.pr.y - s * 1.15 - bob, s, s);
-    } else if (it.type === 'banana') {
-      const s = it.pr.scale * 22;
-      drawShadow(g, it.pr, s);
-      g.drawImage(Game.bananaSprite,
-        it.pr.x - s / 2, it.pr.y - s * .95, s, s);
+    const { o, pr, type } = it;
+    const alpha = 1 - Math.min(1, Math.max(0, (it.d - FOG_NEAR) / (FOG_FAR - FOG_NEAR)));
+    g.globalAlpha = alpha;
+    if (type === 'kart') drawKartSprite(g, o, pr, Game.time);
+    else if (type === 'scenery') {
+      const h = pr.scale * o.height, w = h * o.sprite.width / o.sprite.height;
+      if (pr.x + w / 2 >= 0 && pr.x - w / 2 <= Game.DW) g.drawImage(o.sprite, pr.x - w / 2, pr.y - h, w, h);
+    } else if (type === 'box') {
+      const frame = Game.boxFrames[(Game.time * 10 + o.phase * 5 | 0) % Game.boxFrames.length];
+      const size = pr.scale * 29;
+      drawShadow(g, pr, size);
+      g.drawImage(frame, pr.x - size / 2, pr.y - size * 1.35 - Math.sin(Game.time * 3 + o.phase) * pr.scale * 2, size, size);
+    } else if (type === 'banana') {
+      const size = pr.scale * 22; drawShadow(g, pr, size);
+      g.drawImage(Game.bananaSprite, pr.x - size / 2, pr.y - size * .95, size, size);
     } else {
-      const p = it.o;
-      const r = Math.min(26, Math.max(1.5, it.pr.scale * p.size));
-      g.globalAlpha = a * Math.min(1, p.life / p.fade);
-      g.fillStyle = p.color;
-      g.beginPath();
-      g.arc(it.pr.x, it.pr.y - it.pr.scale * (p.z || 0), r, 0, 7);
-      g.fill();
-    }
-    g.globalAlpha = 1;
-  }
-  if (!kartDrawn) drawPlayerKart(g, cam);
-
-  /* rivals */
-  const rivals = [];
-  for (const k of race.karts) {
-    if (k.isPlayer) continue;
-    const pr = project(k.x, k.y, cam);
-    if (pr && pr.depth < FOG_FAR * 1.1) {
-      rivals.push({ k, pr });
+      g.globalAlpha *= Math.min(1, o.life / o.fade);
+      g.fillStyle = o.color; g.beginPath();
+      g.arc(pr.x, pr.y - pr.scale * (o.z || 0), Math.min(22, Math.max(1.5, pr.scale * o.size)), 0, Math.PI * 2); g.fill();
     }
   }
-  rivals.sort((a, b) => b.pr.depth - a.pr.depth);
-  for (const { k, pr } of rivals) {
-    g.globalAlpha = fogA(pr.depth);
-    drawKartSprite(g, k, pr, Game.time);
-    g.globalAlpha = 1;
-  }
-
+  g.globalAlpha = 1;
+  const shade = g.createLinearGradient(0, Game.DH * .6, 0, Game.DH);
+  shade.addColorStop(0, '#0c1b1400'); shade.addColorStop(1, '#0c1b1455');
+  g.fillStyle = shade; g.fillRect(0, Game.DH * .6, Game.DW, Game.DH * .4);
   g.restore();
 }
 
@@ -442,6 +355,16 @@ function showEl(id, on) {
 }
 
 function startRace(withPlayer) {
+  clearTimeout(Game.goTimer);
+  Game.paused = false;
+  Game.finishDelay = null;
+  Game.shake = 0;
+  Input.reset();
+  document.activeElement?.blur();
+  showEl('pause-screen', false);
+  showEl('results-screen', false);
+  showEl('countdown', false);
+  document.getElementById('countdown').style.animationPlayState = 'running';
   Game.attract = !withPlayer;
   Game.race = new Race(withPlayer, Game.audio);
   Game.race.frozen = !withPlayer ? false : true;
@@ -494,7 +417,7 @@ function updateCountdown(dt) {
           Game.race.msg('ROCKET START!', '#ff7043');
           Game.audio.play('boost');
         }
-        setTimeout(() => el.classList.add('hidden'), 850);
+        Game.goTimer = setTimeout(() => el.classList.add('hidden'), 850);
       } else if (label === '3' || label === '2' || label === '1') {
         Game.audio.play('countA');
       }
@@ -505,12 +428,11 @@ function updateCountdown(dt) {
 }
 
 function onPlayerFinish() {
-  setTimeout(() => {
-    buildResults();
-    showEl('results-screen', true);
-    Game.resultsShown = true;
-  }, 1600);
+  Game.state = 'finished';
+  Game.finishDelay = 1.6;
+  saveBest();
 }
+
 Game.onPlayerFinish = onPlayerFinish;
 
 function buildResults() {
@@ -519,8 +441,8 @@ function buildResults() {
   const rows = [...race.karts].sort((a, b) => a.rank - b.rank);
   const meWon = race.player.rank === 1;
   document.getElementById('results-title').textContent =
-    meWon ? '🏆 You Win!' : '🏁 Finish!';
-  if (!meWon) Game.audio.play('lose');
+    meWon ? 'Top dog.' : 'Nice run, Bear.';
+  // Result refresh must not repeatedly trigger a sound.
 
   let html = '<table>';
   for (const k of rows) {
@@ -536,6 +458,8 @@ function buildResults() {
     </tr>`;
   }
   html += '</table>';
+  const laps = race.player.lapTimes;
+  if (laps.length) html += '<div class="results-sub">FASTEST LAP ' + HUD.fmtTime(Math.min(...laps)) + ' · ' + race.difficulty.toUpperCase() + '</div>';
   if (Game.bestTime != null) {
     html += `<div id="results-sub">Best time: ${HUD.fmtTime(Game.bestTime)}</div>`;
   }
@@ -547,7 +471,7 @@ function saveBest() {
   if (t == null) return;
   if (Game.bestTime == null || t < Game.bestTime) {
     Game.bestTime = t;
-    try { localStorage.setItem('pk_best', String(t)); } catch (e) { }
+    try { localStorage.setItem('bk_best_' + Game.race.difficulty, String(t)); } catch (e) { }
   }
 }
 /* ================= main loop ================= */
@@ -558,7 +482,8 @@ function tick(ts) {
   Game.lastTs = ts;
   if (!dt || dt <= 0) return;
   dt = Math.min(dt, 0.05);
-  Game.time += dt;
+  if (!Game.paused) Game.time += dt;
+  if (Game.state === 'title') return;
 
   /* adaptive internal resolution */
   Game.frameEMA = Game.frameEMA * .95 + (dt * 1000) * .05;
@@ -566,16 +491,16 @@ function tick(ts) {
   if (Game.qualityTimer > 2.5 && !Input.isTouch) {
     Game.qualityTimer = 0;
     const g = document.getElementById('game');
-    if (Game.frameEMA > 23 && Game.IW > 280) {
-      Game.IW = Math.max(280, Math.round(Game.IW * 0.85));
+    if (Game.frameEMA > 23 && Game.IW > 420) {
+      Game.IW = Math.max(420, Math.round(Game.IW * 0.85));
       rebuildBuffer();
-    } else if (Game.frameEMA < 12.5 && Game.IW < 520) {
-      Game.IW = Math.min(520, Math.round(Game.IW * 1.12));
+    } else if (Game.frameEMA < 17.5 && Game.IW < 900) {
+      Game.IW = Math.min(900, Math.round(Game.IW * 1.12));
       rebuildBuffer();
     }
   }
 
-  if (Game.state === 'countdown') updateCountdown(dt);
+  if (!Game.paused && Game.state === 'countdown') updateCountdown(dt);
   if (raceActive()) {
     if (Game.state === 'racing' || Game.state === 'finished') {
       Game.race.update(dt);
@@ -584,13 +509,25 @@ function tick(ts) {
     updateCamera(dt);
   }
 
+  if (!Game.paused && Game.finishDelay != null) {
+    Game.finishDelay -= dt;
+    if (Game.finishDelay <= 0) {
+      Game.finishDelay = null;
+      buildResults(); Game.resultsShown = true;
+      showEl('results-screen', true); showEl('touch-controls', false);
+      showEl('btn-pause', false);
+      Game.audio.stopMusic();
+      document.getElementById('btn-again').focus();
+    }
+  }
+
   /* engine sound */
   {
     const p = Game.race.player;
     const racing = raceActive() && (Game.state !== 'countdown');
     Game.audio.engine(
       racing ? Math.min(1, Math.abs(p.v) / PHYS.MAX_SPEED) : 0,
-      raceActive()
+      raceActive() && !Game.resultsShown
     );
     Game.audio.skid(racing && p.drifting ? 0.11 : 0);
   }
@@ -614,7 +551,7 @@ function renderFrame() {
 }
 
 function drawConfetti(g) {
-  if (!Game.resultsShown) return;
+  if (!Game.resultsShown || Game.reducedMotion || Game.paused) return;
   if (Game.confetti.length < 90 && Math.random() < .3) {
     Game.confetti.push({
       x: Math.random() * Game.DW,
@@ -654,120 +591,135 @@ function rebuildBuffer() {
 async function boot() {
   Game.canvas = document.getElementById('game');
   Game.ctx = Game.canvas.getContext('2d');
-
-  await loadAssets();          // kart sprites, item boxes, icons
-
-  /* world pixels for mode-7 */
-  const wd = TRACK.canvas.getContext('2d')
-    .getImageData(0, 0, TRACK.WORLD, TRACK.WORLD);
-  Game.world32 = new Uint32Array(wd.data.buffer);
-
-  /* best time */
-  try {
-    const b = localStorage.getItem('pk_best');
-    if (b) Game.bestTime = parseFloat(b);
-  } catch (e) { }
-
-  resize();
-  window.addEventListener('resize', () => { resize(); buildSky(); });
-
   Input.init();
-  const audio = new AudioSys();
-  try { if (localStorage.getItem('pk_mute') === '1') audio.muted = true; } catch (e) { }
-  Game.audio = audio;
-
-  /* ---- DOM wiring ---- */
-  const video = document.getElementById('bear-video');
-  video.play().catch(() => { });
-
-  document.getElementById('btn-start').addEventListener('click', () => {
-    audio.init();
-    startRace(true);
-  });
+  Game.audio = new AudioSys();
+  try {
+    Game.audio.muted = localStorage.getItem('pk_mute') === '1';
+    const difficulty = localStorage.getItem('bk_difficulty');
+    if (['cruise', 'sport', 'expert'].includes(difficulty)) Game.difficulty = difficulty;
+  } catch (e) {}
+  setDifficulty(Game.difficulty);
+  updateMuteLabel();
+  for (const [button, dialog] of [['btn-guide', 'guide-dialog'], ['btn-bear', 'bear-dialog']]) {
+    const el = document.getElementById(dialog);
+    document.getElementById(button).addEventListener('click', () => { Input.reset(); el.showModal(); });
+    el.querySelector('.dialog-close').addEventListener('click', () => el.close());
+    el.addEventListener('click', e => { if (e.target === el) { const r = el.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) el.close(); } });
+  }
+  document.querySelectorAll('[data-difficulty]').forEach(el => el.addEventListener('click', () => setDifficulty(el.dataset.difficulty)));
+  const begin = () => { if (Game.state === 'loading') return; Game.audio.init(); startRace(true); };
+  document.getElementById('btn-start').addEventListener('click', begin);
   document.getElementById('btn-pause').addEventListener('click', togglePause);
   document.getElementById('btn-resume').addEventListener('click', togglePause);
-  document.getElementById('btn-restart').addEventListener('click', () => {
-    showEl('pause-screen', false);
-    startRace(true);
-  });
-  document.getElementById('btn-quit').addEventListener('click', () => {
-    showEl('pause-screen', false);
-    goTitle();
-  });
+  document.getElementById('btn-restart').addEventListener('click', begin);
+  document.getElementById('btn-again').addEventListener('click', begin);
+  document.getElementById('btn-quit').addEventListener('click', goTitle);
+  document.getElementById('btn-title').addEventListener('click', goTitle);
   document.getElementById('btn-mute').addEventListener('click', toggleMute);
-  document.getElementById('btn-again').addEventListener('click', () => {
-    showEl('results-screen', false);
-    startRace(true);
-  });
-  document.getElementById('btn-title').addEventListener('click', () => {
-    showEl('results-screen', false);
-    goTitle();
-  });
-  /* any first gesture unlocks audio */
-  window.addEventListener('pointerdown', function once() {
-    audio.init();
-    video.play().catch(() => { });
-    window.removeEventListener('pointerdown', once);
-  }, { once: true });
-
+  document.getElementById('btn-menu-mute').addEventListener('click', toggleMute);
   Input.onPause = togglePause;
-  Input.onConfirm = () => {
-    if (Game.state === 'title') {
-      audio.init();
-      startRace(true);
-    } else if (Game.resultsShown) {
-      showEl('results-screen', false);
-      startRace(true);
-    }
-  };
+  Input.onConfirm = () => { if (!Game.paused && (Game.state === 'title' || Game.resultsShown)) begin(); };
   Input.onMuteToggle = toggleMute;
   Input.onRespawn = () => {
-    if ((Game.state === 'racing' || Game.state === 'finished') && !Game.race.player.finished)
-      Game.race.player.respawn();
+    if (Game.state === 'racing' && !Game.paused && !Game.race.player.finished) {
+      Game.race.player.respawn(); Game.race.msg('BACK ON TRACK', '#dbe0c6');
+    }
   };
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden &&
-        (Game.state === 'racing' || Game.state === 'countdown')) togglePause();
+  const autoPause = () => {
+    Input.reset();
+    if (!Game.paused && !Game.resultsShown && ['racing', 'countdown', 'finished'].includes(Game.state)) togglePause();
+  };
+  window.addEventListener('blur', autoPause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
+  // Keep keyboard focus in the visible modal panel.
+  document.addEventListener('keydown', e => {
+    const panel = Game.paused ? 'pause-screen' : Game.resultsShown ? 'results-screen' : null;
+    if (e.code !== 'Tab' || !panel) return;
+    const nodes = [...document.getElementById(panel).querySelectorAll('button,input')];
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   });
-
-  buildSky();
-  startRace(false);            // attract demo behind title
+  await loadAssets();
+  const wd = TRACK.canvas.getContext('2d').getImageData(0, 0, TRACK.WORLD, TRACK.WORLD);
+  Game.world32 = new Uint32Array(wd.data.buffer);
+  resize(); buildSky(); drawTrackPreview();
+  window.addEventListener('resize', () => { resize(); buildSky(); });
+  startRace(false);
   Game.state = 'title';
   showEl('title-screen', true);
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('start-label').textContent = 'LET’S RACE';
+  document.getElementById('load-status').textContent = 'Ready to race.';
   Game.lastTs = performance.now();
   requestAnimationFrame(tick);
 }
 
-function togglePause() {
-  if (!Game.race || Game.state === 'title' || Game.resultsShown) return;
-  Game.paused = !Game.paused;
-  showEl('pause-screen', Game.paused);
+function setDifficulty(value) {
+  Game.difficulty = value;
+  const text = { cruise: 'Easy pace. Find your racing line.', sport: 'A little speed. A little competition.', expert: 'Faster karts. Rivals that mean business.' };
+  document.querySelectorAll('[data-difficulty]').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.difficulty === value)));
+  document.getElementById('difficulty-description').textContent = text[value];
+  Game.bestTime = null;
+  try {
+    localStorage.setItem('bk_difficulty', value);
+    const raw = localStorage.getItem('bk_best_' + value);
+    const saved = Number(raw);
+    if (raw !== null && Number.isFinite(saved) && saved > 0) Game.bestTime = saved;
+  } catch (e) {}
+  document.getElementById('best-record').textContent = Game.bestTime ? value.toUpperCase() + ' RECORD / ' + HUD.fmtTime(Game.bestTime) : 'YOUR NEXT FAVORITE RACE.';
 }
 
+function drawTrackPreview() {
+  const cv = document.getElementById('track-preview'), g = cv.getContext('2d');
+  const b = TRACK.getBounds(), scale = Math.min(210 / (b.x1 - b.x0), 120 / (b.y1 - b.y0));
+  const ox = (240 - (b.x1 - b.x0) * scale) / 2, oy = (150 - (b.y1 - b.y0) * scale) / 2;
+  g.clearRect(0, 0, 240, 150); g.beginPath();
+  TRACK.minimapPath.forEach((p, i) => { const x = ox + (p.x - b.x0) * scale, y = oy + (p.y - b.y0) * scale; i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.closePath(); g.lineJoin = 'round'; g.strokeStyle = '#d2d9be'; g.lineWidth = 5; g.stroke();
+  const p = TRACK.samples[0]; g.fillStyle = '#ed7b40'; g.beginPath(); g.arc(ox + (p.x - b.x0) * scale, oy + (p.y - b.y0) * scale, 6, 0, 7); g.fill();
+}
+
+function togglePause() {
+  if (!Game.race || !['racing', 'countdown', 'finished'].includes(Game.state) || Game.resultsShown) return;
+  Game.paused = !Game.paused;
+  Input.reset(); showEl('pause-screen', Game.paused);
+  showEl('touch-controls', Input.isTouch && !Game.paused);
+  const count = document.getElementById('countdown');
+  count.style.animationPlayState = Game.paused ? 'paused' : 'running';
+  if (Game.paused) {
+    Game.audio.stopMusic(); Game.audio.engine(0, false); Game.audio.skid(0);
+    document.getElementById('btn-resume').focus();
+  } else {
+    document.activeElement?.blur();
+    if (Game.state !== 'countdown') Game.audio.startMusic();
+  }
+}
 function toggleMute() {
-  Game.audio.setMuted(!Game.audio.muted);
-  try { localStorage.setItem('pk_mute', Game.audio.muted ? '1' : '0'); } catch (e) { }
+  Game.audio.init(); Game.audio.setMuted(!Game.audio.muted);
+  try { localStorage.setItem('pk_mute', Game.audio.muted ? '1' : '0'); } catch (e) {}
   updateMuteLabel();
 }
 function updateMuteLabel() {
-  document.getElementById('btn-mute').textContent =
-    Game.audio.muted ? '🔇 Sound: Off' : '🔊 Sound: On';
+  const muted = Game.audio.muted;
+  document.getElementById('btn-mute').textContent = muted ? 'Sound: Off' : 'Sound: On';
+  const button = document.getElementById('btn-menu-mute');
+  button.textContent = muted ? 'Sound off' : 'Sound on';
+  button.setAttribute('aria-pressed', String(muted));
+  button.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
 }
-
 function goTitle() {
-  Game.paused = false;
-  showEl('pause-screen', false);
-  showEl('touch-controls', false);
-  showEl('btn-pause', false);
-  document.getElementById('countdown').classList.add('hidden');
   startRace(false);
   Game.state = 'title';
-  showEl('title-screen', true);
-  Game.audio.stopMusic();
-  Game.audio.engine(0, false);
-  Game.audio.skid(0);
+  showEl('touch-controls', false); showEl('title-screen', true);
+  Game.audio.stopMusic(); Game.audio.engine(0, false); Game.audio.skid(0);
+  setDifficulty(Game.difficulty);
+  document.getElementById('btn-start').focus();
 }
-
-window.addEventListener('load', boot);
-
+window.addEventListener('load', () => boot().catch(error => {
+  console.error('Unable to prepare Bear Kart:', error);
+  document.getElementById('start-label').textContent = 'RELOAD TO TRY AGAIN';
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-start').addEventListener('click', () => window.location.reload(), { once: true });
+  document.getElementById('load-status').textContent = 'The game could not load. Please reload the page.';
+}));
