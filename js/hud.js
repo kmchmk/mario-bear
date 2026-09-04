@@ -4,9 +4,17 @@ const HUD = (() => {
   let icons = {};
   function fmtTime(t) {
     if (!Number.isFinite(t) || t < 0) return '--:--.--';
-    return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') + '.' + String(Math.floor(t * 100) % 100).padStart(2, '0');
+    return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(Math.floor(t % 60)).padStart(2, '0') + '.' + String(Math.floor(t * 100) % 100).padStart(2, '0');
   }
-  function buildIcons() { icons = { bone: Sprites.boneIcon(80, 1), triple: Sprites.boneIcon(80, 3), banana: Sprites.bananaIcon(80) }; }
+  function buildIcons() {
+    icons = {
+      bone: Sprites.boneIcon(80, 1),
+      triple: Sprites.boneIcon(80, 3),
+      triple3: Sprites.boneIcon(80, 3),
+      triple2: Sprites.boneIcon(80, 2),
+      banana: Sprites.bananaIcon(80)
+    };
+  }
   function panel(g, x, y, w, h) {
     g.fillStyle = C.panel; g.beginPath(); g.roundRect(x, y, w, h, 9); g.fill();
     g.strokeStyle = '#e5e9d51f'; g.lineWidth = 1; g.stroke();
@@ -37,19 +45,23 @@ const HUD = (() => {
     // CSS-pixel coordinates keep the HUD consistent at every device pixel ratio.
     panel(g, pad, pad, compact ? 93 : 108, 82);
     text(g, 'POSITION', pad + 13, pad + 19, 8, C.muted, 600);
-    text(g, String(p.rank).padStart(2, '0'), pad + 12, pad + 64, 42, p.rank === 1 ? C.orange : C.cream, 750);
+    text(g, String(p.rank).padStart(2, '0'), pad + 12, pad + 64, 42, p.rank === 1 ? C.orange : C.cream, 800);
     text(g, '/ 04', pad + (compact ? 60 : 68), pad + 63, 11, C.muted);
     const lx = pad + (compact ? 106 : 123);
     panel(g, lx, pad, compact ? 120 : 170, 82);
     text(g, 'LAP ' + Math.max(1, Math.min(p.lap, race.laps)) + ' / ' + race.laps, lx + 13, pad + 22, 10, C.cream, 700);
     g.fillStyle = '#f4f1e825'; g.fillRect(lx + 13, pad + 32, compact ? 94 : 144, 1);
     text(g, fmtTime(p.finished ? p.finishTime : race.time), lx + 13, pad + 59, compact ? 18 : 24, C.cream, 500);
-    if (!compact) text(g, race.difficulty.toUpperCase() + '  /  GOOD BOY GRAND PRIX', lx + 190, pad + 25, 9, '#f4f1e8', 650);
+    if (!compact) text(g, race.difficulty.toUpperCase() + '  /  GOOD BOY GRAND PRIX', lx + 190, pad + 25, 9, '#f4f1e8', 600);
     // Inventory is always visible, including on touch devices.
     const iy = pad + 97;
     panel(g, pad, iy, compact ? 93 : 108, 92);
     let item = p.rouletteT > 0 ? ['bone', 'banana', 'triple'][Math.floor(time * 12) % 3] : p.item;
-    if (item && icons[item]) g.drawImage(icons[item], pad + 25, iy + 5, 49, 49);
+    const iconKey = item === 'triple'
+      ? (p.itemCount === 1 ? 'bone' : (icons['triple' + p.itemCount] ? 'triple' + p.itemCount : 'triple'))
+      : item;
+    const iconImg = icons[iconKey] || (item ? icons[item] : null);
+    if (iconImg) g.drawImage(iconImg, pad + (compact ? 22 : 29.5), iy + 5, 49, 49);
     else text(g, '+', pad + (compact ? 46 : 54), iy + 43, 30, '#b7c2af66', 300, 'center');
     const names = { bone: 'BONE BOOST', triple: 'BOOST × ' + p.itemCount, banana: 'BANANA' };
     text(g, p.rouletteT > 0 ? 'PICKING…' : names[p.item] || 'FIND AN ITEM', pad + (compact ? 46 : 54), iy + 68, 8, item ? C.orange : C.muted, 600, 'center');
@@ -60,7 +72,7 @@ const HUD = (() => {
     const sx = touch ? pad + (compact ? 106 : 123) : w - pad - (compact ? 120 : 161);
     const sy = touch ? iy : h - 122;
     panel(g, sx, sy, compact ? 120 : 161, 94);
-    text(g, String(Math.round(Math.abs(p.v) * .32)).padStart(3, '0'), sx + 13, sy + 53, compact ? 35 : 45, C.cream, 650);
+    text(g, String(Math.round(Math.abs(p.v) * .32)).padStart(3, '0'), sx + 13, sy + 53, compact ? 35 : 45, C.cream, 600);
     text(g, 'KM/H', sx + (compact ? 85 : 120), sy + 53, 8, C.muted, 600);
     g.fillStyle = '#a9ba952b'; g.fillRect(sx + 14, sy + 69, compact ? 92 : 132, 3);
     g.fillStyle = p.boostT > 0 ? C.orange : '#b5c996';
@@ -84,6 +96,7 @@ const HUD = (() => {
       g.globalAlpha = warning || Game.reducedMotion ? 1 : Math.min(1, (m.dur - (time - m.t0)) * 3);
       panel(g, (w - width) / 2, y, width, 45);
       text(g, message, w / 2, y + 29, compact ? 15 : 20, warning ? '#ffac7c' : C.cream, 700, 'center');
+      g.globalAlpha = 1;
     }
     if (p.boostT > 0 && !Game.reducedMotion) {
       g.globalAlpha = .22; g.strokeStyle = C.cream; g.lineWidth = 1.4;

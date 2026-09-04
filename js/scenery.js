@@ -46,9 +46,19 @@ const Scenery = (() => {
       objects.push({ x, y, sprite: trees[random() > .5 ? 1 : 0], height: 95 + random() * 95 });
     }
   }
-  for (let i = 0; i < 12; i++) {
-    const p = TRACK.poseAt(i * TRACK.LENGTH / 12 + 170);
-    objects.push({ x: p.x - Math.sin(p.a) * (TRACK.HALF + 30), y: p.y + Math.cos(p.a) * (TRACK.HALF + 30), sprite: signs[i % signs.length], height: 37 });
+  const signCount = 10;
+  const startS = 320, endS = TRACK.LENGTH - 420;
+  const stepS = (endS - startS) / (signCount - 1);
+  for (let i = 0; i < signCount; i++) {
+    const s = startS + i * stepS;
+    const p = TRACK.poseAt(s);
+    const side = (i % 2 === 0) ? 1 : -1;
+    objects.push({
+      x: p.x - Math.sin(p.a) * side * (TRACK.HALF + 30),
+      y: p.y + Math.cos(p.a) * side * (TRACK.HALF + 30),
+      sprite: signs[i % signs.length],
+      height: 37
+    });
   }
   function rivalKart(ch) {
     const [c, g] = canvas(256, 260);
